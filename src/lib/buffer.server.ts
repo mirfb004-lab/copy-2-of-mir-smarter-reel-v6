@@ -8,6 +8,13 @@ export interface BufferPostMetrics {
   raw: unknown;
 }
 export type PublishMode = "addToQueue" | "shareNow" | "customScheduled";
+/** A single Buffer PostMetric, kept verbatim so the UI can render whatever Buffer returns. */
+export interface BufferMetricEntry {
+  type: string | null;
+  name: string | null;
+  value: number | string | null;
+  unit: string | null;
+}
 export { getBufferPlatformCapabilities, normalizeBufferPlatform } from "./buffer-platforms";
 import { getBufferPlatformCapabilities, normalizeBufferPlatform } from "./buffer-platforms";
 
