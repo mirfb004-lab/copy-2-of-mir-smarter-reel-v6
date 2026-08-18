@@ -44,6 +44,8 @@ export interface BufferClient {
   getPost(id: string): Promise<{ analytics: Record<string, number>; raw: any } | null>;
   getPostProof(id: string): Promise<BufferPostProof | null>;
   getChannelPostsMetrics(channelId: string, limit?: number): Promise<BufferPostMetrics[]>;
+  /** Raw Buffer metrics for one post, rendered generically (no hardcoded metric list). */
+  getPostMetricEntries(id: string): Promise<{ metrics: BufferMetricEntry[]; metricsUpdatedAt: string | null } | null>;
 }
 
 // Normalize Buffer metric names/types to our canonical keys.
