@@ -8,6 +8,13 @@ export interface BufferPostMetrics {
   raw: unknown;
 }
 export type PublishMode = "addToQueue" | "shareNow" | "customScheduled";
+/** A single Buffer PostMetric, kept verbatim so the UI can render whatever Buffer returns. */
+export interface BufferMetricEntry {
+  type: string | null;
+  name: string | null;
+  value: number | string | null;
+  unit: string | null;
+}
 export { getBufferPlatformCapabilities, normalizeBufferPlatform } from "./buffer-platforms";
 import { getBufferPlatformCapabilities, normalizeBufferPlatform } from "./buffer-platforms";
 
@@ -44,6 +51,8 @@ export interface BufferClient {
   getPost(id: string): Promise<{ analytics: Record<string, number>; raw: any } | null>;
   getPostProof(id: string): Promise<BufferPostProof | null>;
   getChannelPostsMetrics(channelId: string, limit?: number): Promise<BufferPostMetrics[]>;
+  /** Raw Buffer metrics for one post, rendered generically (no hardcoded metric list). */
+  getPostMetricEntries(id: string): Promise<{ metrics: BufferMetricEntry[]; metricsUpdatedAt: string | null } | null>;
 }
 
 // Normalize Buffer metric names/types to our canonical keys.
@@ -254,6 +263,21 @@ export function makeBufferClient(token: string, endpoint: string): BufferClient 
     },
 
     getPostProof,
+
+    async getPostMetricEntries(id) {
+      const d = await gql<{ post: any }>(
+        `query PostMetrics($id: PostId!) { post(input: { id: $id }) { id metricsUpdatedAt metrics { type name value unit } } }`,
+        { id },
+      );
+      if (!d?.post) return null;
+      const metrics: BufferMetricEntry[] = (d.post.metrics ?? []).map((m: any) => ({
+        type: m?.type ?? null,
+        name: m?.name ?? null,
+        value: m?.value ?? null,
+        unit: m?.unit ?? null,
+      }));
+      return { metrics, metricsUpdatedAt: d.post.metricsUpdatedAt ?? null };
+    },
 
     async getPost(id) {
       try {

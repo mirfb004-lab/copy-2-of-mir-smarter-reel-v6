@@ -508,6 +508,66 @@ export type Database = {
         }
         Relationships: []
       }
+      formula_run_insights: {
+        Row: {
+          buffer_post_id: string
+          created_at: string
+          id: string
+          last_synced_at: string | null
+          metrics: Json
+          metrics_updated_at: string | null
+          next_sync_due_at: string | null
+          post_type: string
+          recurring_schedule_id: string
+          run_id: string | null
+          sync_attempts: number
+          sync_status: string
+        }
+        Insert: {
+          buffer_post_id: string
+          created_at?: string
+          id?: string
+          last_synced_at?: string | null
+          metrics?: Json
+          metrics_updated_at?: string | null
+          next_sync_due_at?: string | null
+          post_type?: string
+          recurring_schedule_id: string
+          run_id?: string | null
+          sync_attempts?: number
+          sync_status?: string
+        }
+        Update: {
+          buffer_post_id?: string
+          created_at?: string
+          id?: string
+          last_synced_at?: string | null
+          metrics?: Json
+          metrics_updated_at?: string | null
+          next_sync_due_at?: string | null
+          post_type?: string
+          recurring_schedule_id?: string
+          run_id?: string | null
+          sync_attempts?: number
+          sync_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "formula_run_insights_recurring_schedule_id_fkey"
+            columns: ["recurring_schedule_id"]
+            isOneToOne: false
+            referencedRelation: "recurring_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "formula_run_insights_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       insight_trends: {
         Row: {
           baseline: number | null
@@ -2059,6 +2119,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_formula_insight_sync: {
+        Args: { _insight_id: string; _now: string }
+        Returns: boolean
+      }
       claim_multi_channel_queue_item: {
         Args: { _campaign_id: string; _queue_item_id: string }
         Returns: boolean
