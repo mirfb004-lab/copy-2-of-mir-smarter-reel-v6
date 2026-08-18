@@ -44,7 +44,7 @@ async function nextRunNumber(sb: Sb, userId: string) {
 
 export async function runReelFormulaSchedule(sb: Sb, scheduleId: string, slotKey: string) {
   const { data: schedule, error: scheduleError } = await sb.from("recurring_schedules")
-    .select("*,channels(*,buffer_credentials(*)),recurring_schedule_items(*)")
+    .select("*,channels(*,buffer_credentials(*)),recurring_schedule_items!recurring_schedule_items_schedule_id_fkey(*)")
     .eq("id", scheduleId).maybeSingle();
   if (scheduleError) throw new Error(scheduleError.message);
   if (!schedule || !schedule.is_active) return { skipped: true, reason: "inactive" };
