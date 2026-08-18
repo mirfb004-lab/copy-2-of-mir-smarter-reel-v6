@@ -264,6 +264,21 @@ export function makeBufferClient(token: string, endpoint: string): BufferClient 
 
     getPostProof,
 
+    async getPostMetricEntries(id) {
+      const d = await gql<{ post: any }>(
+        `query PostMetrics($id: PostId!) { post(input: { id: $id }) { id metricsUpdatedAt metrics { type name value unit } } }`,
+        { id },
+      );
+      if (!d?.post) return null;
+      const metrics: BufferMetricEntry[] = (d.post.metrics ?? []).map((m: any) => ({
+        type: m?.type ?? null,
+        name: m?.name ?? null,
+        value: m?.value ?? null,
+        unit: m?.unit ?? null,
+      }));
+      return { metrics, metricsUpdatedAt: d.post.metricsUpdatedAt ?? null };
+    },
+
     async getPost(id) {
       try {
         const d = await gql<{ post: any }>(
