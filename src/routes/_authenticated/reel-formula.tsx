@@ -21,6 +21,7 @@ import { ContentGalleryPanel } from "@/components/content-gallery-panel";
 import { SchedulerStatsPanel } from "@/components/scheduler-stats-panel";
 import { ChannelSelect } from "@/components/channel-picker";
 import { SchedulerItemHistory } from "@/components/scheduler-item-history";
+import { FormulaInsightsPanel } from "@/components/formula-insights-panel";
 import { useCampaignScope } from "@/components/campaign-context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -227,7 +228,10 @@ function ReelFormulaPage() {
                           <div className="text-xs text-muted-foreground truncate">{schedule.media_url}</div>
                           {schedule.last_error && <div className="text-xs text-destructive">{schedule.last_error}</div>}
                           {schedule.mode === "multiple" && <RecurringScheduleItemsPanel scheduleId={schedule.id} />}
-                          <SchedulerItemHistory source="formula" itemId={schedule.id} />
+                          <div className="flex flex-wrap items-start gap-2">
+                            <SchedulerItemHistory source="formula" itemId={schedule.id} />
+                            <FormulaInsightsPanel scheduleId={schedule.id} />
+                          </div>
                           <div className="mt-3"><CloudinaryTransformFields enabled={Boolean(schedule.cloudinary_transform_enabled)} transformation={schedule.cloudinary_transform ?? ""} mode={schedule.cloudinary_transform_mode === "stack" ? "stack" : "replace"} sampleUrl={schedule.media_url} onEnabledChange={(cloudinary_transform_enabled) => cloudinaryMut.mutate({ id: schedule.id, cloudinary_transform_enabled, cloudinary_transform: schedule.cloudinary_transform ?? "", cloudinary_transform_mode: schedule.cloudinary_transform_mode === "stack" ? "stack" : "replace" })} onTransformationChange={(cloudinary_transform) => cloudinaryMut.mutate({ id: schedule.id, cloudinary_transform_enabled: Boolean(schedule.cloudinary_transform_enabled), cloudinary_transform, cloudinary_transform_mode: schedule.cloudinary_transform_mode === "stack" ? "stack" : "replace" })} onModeChange={(cloudinary_transform_mode) => cloudinaryMut.mutate({ id: schedule.id, cloudinary_transform_enabled: Boolean(schedule.cloudinary_transform_enabled), cloudinary_transform: schedule.cloudinary_transform ?? "", cloudinary_transform_mode })} /></div>
                           {editingScheduleId === schedule.id && <FormulaScheduleEditor schedule={schedule} channels={channels ?? []} onCancel={() => setEditingScheduleId(null)} onSave={(value) => editScheduleMut.mutate(value)} />}
                         </div>
