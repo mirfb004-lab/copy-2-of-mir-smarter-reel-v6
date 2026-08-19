@@ -157,6 +157,14 @@ export async function runReelFormulaSchedule(sb: Sb, scheduleId: string, slotKey
       verified_at: published.verified ? new Date().toISOString() : null,
     });
     if (postError) throw new Error(`formula post history: ${postError.message}`);
+    const { recordFormulaRunInsight } = await import("./formula-insights.server");
+    await recordFormulaRunInsight(sb, {
+      runId: run.id,
+      recurringScheduleId: schedule.id,
+      bufferPostId: published.postId,
+      postType: schedule.platform === "instagram" ? schedule.post_type : schedule.post_type,
+      platform: schedule.platform,
+    });
     const finish = new Date().toISOString();
     await sb.from("runs").update({ status: "complete", current_step: "complete", finished_at: finish, duration_ms: Date.now() - startedAt, heartbeat_at: finish, step_state: { recurring_schedule_id: schedule.id, slot_key: slotKey, step: "complete", buffer_post_id: published.postId } }).eq("id", run.id);
     await sb.from("recurring_schedules").update({
