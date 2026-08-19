@@ -2140,6 +2140,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      claim_schedule_slot: {
+        Args: { _next_run_at: string; _now: string; _schedule_id: string }
+        Returns: boolean
+      }
       claim_sheet_mode_channel: {
         Args: {
           _channel_target_id: string
