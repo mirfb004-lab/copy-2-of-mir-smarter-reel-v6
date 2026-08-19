@@ -79,7 +79,9 @@ export const Route = createFileRoute("/api/public/cron/tick")({
         const multiChannelResults = await runDueMultiChannelSchedules(supabaseAdmin as any);
         const { runDueSheetModeSheets } = await import("@/lib/sheet-mode.server");
         const sheetModeResults = await runDueSheetModeSheets(supabaseAdmin as any);
-        return Response.json({ processed: results.length + formulaResults.length + multiChannelResults.length + sheetModeResults.length, results, formulaResults, multiChannelResults, sheetModeResults });
+        const { runDueFormulaInsightSyncs } = await import("@/lib/formula-insights.server");
+        const formulaInsightResults = await runDueFormulaInsightSyncs(supabaseAdmin as any);
+        return Response.json({ processed: results.length + formulaResults.length + multiChannelResults.length + sheetModeResults.length, results, formulaResults, multiChannelResults, sheetModeResults, formulaInsightResults });
       },
     },
   },
