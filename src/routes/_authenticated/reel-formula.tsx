@@ -21,6 +21,7 @@ import { ContentGalleryPanel } from "@/components/content-gallery-panel";
 import { SchedulerStatsPanel } from "@/components/scheduler-stats-panel";
 import { ChannelSelect } from "@/components/channel-picker";
 import { SchedulerItemHistory } from "@/components/scheduler-item-history";
+import { FormulaInsightsPanel } from "@/components/formula-insights-panel";
 import { useCampaignScope } from "@/components/campaign-context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
