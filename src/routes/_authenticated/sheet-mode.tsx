@@ -729,6 +729,13 @@ function SheetGrid({
             <Button variant="outline" onClick={() => { setFillMode("video_url"); setFillValue(""); }}>
               Fill URLs
             </Button>
+            <Button variant="outline" onClick={() => { setFillAllValue(""); setFillAllScope("empty"); setFillAllOpen(true); }}>
+              <Wand2 className="h-4 w-4 mr-2" /> Fill all Captions
+            </Button>
+            <Button variant="outline" className="text-destructive" onClick={() => setClearOpen(true)}>
+              <Trash2 className="h-4 w-4 mr-2" /> Clear Entire Sheet
+            </Button>
+
             <Button
               variant="outline"
               onClick={() =>
