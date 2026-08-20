@@ -65,7 +65,13 @@ import {
   updateSheetModeChannelCustomization,
   fillSheetModeCaptions,
   fillSheetModeUrls,
+  fillAllSheetModeCaptions,
+  clearSheetModeRows,
 } from "@/lib/sheet-mode.functions";
+import { SheetModeImportWizard, parseImportFile, type ParsedImportFile } from "@/components/sheet-mode-import-wizard";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
 
 export const Route = createFileRoute("/_authenticated/sheet-mode")({ component: SheetModePage });
 type Settings = {
@@ -584,6 +590,14 @@ function SheetGrid({
   const [customizationTarget, setCustomizationTarget] = useState<string | null>(null);
   const [customizationDraft, setCustomizationDraft] = useState<Record<string, any>>({});
   const [editingSettings, setEditingSettings] = useState(false);
+  const [importFile, setImportFile] = useState<ParsedImportFile | null>(null);
+  const [fillAllOpen, setFillAllOpen] = useState(false);
+  const [fillAllValue, setFillAllValue] = useState("");
+  const [fillAllScope, setFillAllScope] = useState<"empty" | "all">("empty");
+  const [clearOpen, setClearOpen] = useState(false);
+  const fillAll = useServerFn(fillAllSheetModeCaptions);
+  const clearRows = useServerFn(clearSheetModeRows);
+
   const active = targets.filter((t) => t.is_active);
   const run = (p: Promise<unknown>, text?: string) =>
     p
