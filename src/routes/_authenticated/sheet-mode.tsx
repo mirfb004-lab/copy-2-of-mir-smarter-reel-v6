@@ -603,19 +603,12 @@ function SheetGrid({
   const selectedIds = [...(selected[bulkColumn] ?? new Set())];
   const parseFile = async (file: File) => {
     try {
-      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
-      setPreview(
-        detect(
-          XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], {
-            header: 1,
-            defval: "",
-          }),
-        ),
-      );
+      setImportFile(await parseImportFile(file));
     } catch (e) {
       toast.error(msg(e));
     }
   };
+
   const parseRaw = () => setPreview(detect(parseDelimited(raw)));
   const parseGoogle = async () => {
     try {
