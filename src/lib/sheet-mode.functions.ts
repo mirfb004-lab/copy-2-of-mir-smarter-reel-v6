@@ -557,7 +557,7 @@ async function insertImportedRows(sb: any, sheetIdValue: string, rows: Array<{ c
 
 export const importSheetModeRows = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ sheet_id: sheetId, rows: z.array(importRowSchema).max(5000) }).parse(d))
+  .inputValidator((d: unknown) => z.object({ sheet_id: sheetId, rows: z.array(importRowSchema).max(5000), allow_partial: z.boolean().optional().default(false) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertSheetOwner(context.supabase, context.userId, data.sheet_id);
     const errors: Array<{ row: number; message: string }> = [];
@@ -566,18 +566,26 @@ export const importSheetModeRows = createServerFn({ method: "POST" })
     data.rows.forEach((row, index) => {
       const urlError = validateCellValue("video_url", row.video_url);
       const captionError = validateCellValue("caption", row.caption);
-      if (!row.video_url.trim() || urlError || captionError) {
+      const missingUrl = !row.video_url.trim();
+      if (urlError || captionError || (missingUrl && !data.allow_partial)) {
         errors.push({ row: index + 1, message: urlError ?? captionError ?? "Video URL is required" });
         return;
       }
+      if (data.allow_partial && missingUrl && !row.caption.trim()) {
+        errors.push({ row: index + 1, message: "Row is empty" });
+        return;
+      }
       const key = row.video_url.trim().toLowerCase();
-      if (seen.has(key)) { errors.push({ row: index + 1, message: "Duplicate video URL" }); return; }
-      seen.add(key);
+      if (key) {
+        if (seen.has(key)) { errors.push({ row: index + 1, message: "Duplicate video URL" }); return; }
+        seen.add(key);
+      }
       valid.push({ ...row, caption: row.caption.trim(), video_url: row.video_url.trim() });
     });
     const result = await insertImportedRows(context.supabase, data.sheet_id, valid);
     return { ...result, skipped: errors.length, errors };
   });
+
 
 export const removeEmptySheetModeRows = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
