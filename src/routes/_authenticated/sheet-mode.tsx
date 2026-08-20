@@ -65,7 +65,13 @@ import {
   updateSheetModeChannelCustomization,
   fillSheetModeCaptions,
   fillSheetModeUrls,
+  fillAllSheetModeCaptions,
+  clearSheetModeRows,
 } from "@/lib/sheet-mode.functions";
+import { SheetModeImportWizard, parseImportFile, type ParsedImportFile } from "@/components/sheet-mode-import-wizard";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
 
 export const Route = createFileRoute("/_authenticated/sheet-mode")({ component: SheetModePage });
 type Settings = {
@@ -584,6 +590,14 @@ function SheetGrid({
   const [customizationTarget, setCustomizationTarget] = useState<string | null>(null);
   const [customizationDraft, setCustomizationDraft] = useState<Record<string, any>>({});
   const [editingSettings, setEditingSettings] = useState(false);
+  const [importFile, setImportFile] = useState<ParsedImportFile | null>(null);
+  const [fillAllOpen, setFillAllOpen] = useState(false);
+  const [fillAllValue, setFillAllValue] = useState("");
+  const [fillAllScope, setFillAllScope] = useState<"empty" | "all">("empty");
+  const [clearOpen, setClearOpen] = useState(false);
+  const fillAll = useServerFn(fillAllSheetModeCaptions);
+  const clearRows = useServerFn(clearSheetModeRows);
+
   const active = targets.filter((t) => t.is_active);
   const run = (p: Promise<unknown>, text?: string) =>
     p
@@ -603,19 +617,12 @@ function SheetGrid({
   const selectedIds = [...(selected[bulkColumn] ?? new Set())];
   const parseFile = async (file: File) => {
     try {
-      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
-      setPreview(
-        detect(
-          XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], {
-            header: 1,
-            defval: "",
-          }),
-        ),
-      );
+      setImportFile(await parseImportFile(file));
     } catch (e) {
       toast.error(msg(e));
     }
   };
+
   const parseRaw = () => setPreview(detect(parseDelimited(raw)));
   const parseGoogle = async () => {
     try {
@@ -649,6 +656,89 @@ function SheetGrid({
   };
   return (
     <div className="space-y-5 max-w-[1500px]">
+      {importFile && (
+        <SheetModeImportWizard
+          parsed={importFile}
+          onCancel={() => setImportFile(null)}
+          onConfirm={(importedRows) =>
+            importRows({ data: { sheet_id: sheet.id, rows: importedRows, allow_partial: true } })
+              .then((result) => {
+                toast.success(`Imported ${result.inserted} rows${result.skipped ? `, skipped ${result.skipped}` : ""}`);
+                setImportFile(null);
+                refresh();
+              })
+              .catch((e) => toast.error(msg(e)))
+          }
+        />
+      )}
+      <Dialog open={fillAllOpen} onOpenChange={setFillAllOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Fill all Captions</DialogTitle>
+            <DialogDescription>Apply one caption across the rows in this sheet.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label>Caption</Label>
+              <Textarea value={fillAllValue} onChange={(e) => setFillAllValue(e.target.value)} placeholder="Follow for more" />
+            </div>
+            <RadioGroup value={fillAllScope} onValueChange={(v) => setFillAllScope(v as "empty" | "all")} className="gap-2">
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="empty" id="fill-empty" />
+                <Label htmlFor="fill-empty">Fill empty caption cells only</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="all" id="fill-all" />
+                <Label htmlFor="fill-all">Overwrite every caption cell</Label>
+              </div>
+            </RadioGroup>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setFillAllOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!fillAllValue.trim()}
+              onClick={() =>
+                fillAll({ data: { sheet_id: sheet.id, caption: fillAllValue.trim(), scope: fillAllScope } })
+                  .then((result) => {
+                    toast.success(`Filled ${result.filled} caption${result.filled === 1 ? "" : "s"}`);
+                    setFillAllOpen(false);
+                    refresh();
+                  })
+                  .catch((e) => toast.error(msg(e)))
+              }
+            >
+              Apply
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={clearOpen} onOpenChange={setClearOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Clear Entire Sheet?</DialogTitle>
+            <DialogDescription>This will permanently remove all rows from this sheet.</DialogDescription>
+          </DialogHeader>
+          <p className="text-sm">Rows to delete: {rows.length}</p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setClearOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() =>
+                clearRows({ data: { sheet_id: sheet.id } })
+                  .then((result) => {
+                    toast.success(`Deleted ${result.removed} row${result.removed === 1 ? "" : "s"}`);
+                    setClearOpen(false);
+                    refresh();
+                  })
+                  .catch((e) => toast.error(msg(e)))
+              }
+            >
+              Delete All Rows
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {editingSettings && <SheetModeSettingsEditor initial={{ name: sheet.name, publish_mode: sheet.publish_mode, custom_schedule_offset_minutes: sheet.custom_schedule_offset_minutes, custom_schedule_at: sheet.custom_schedule_at, rows_per_run: sheet.rows_per_run, schedule_label: sheet.schedule_label, selection_rule: sheet.selection_rule, after_publish_mark_status: sheet.after_publish_mark_status, after_publish_save_post_id: sheet.after_publish_save_post_id, after_publish_save_time: sheet.after_publish_save_time, after_publish_save_url: sheet.after_publish_save_url, retry_failed: sheet.retry_failed, scheduler_mode: sheet.scheduler_mode ?? "every_x_hours", scheduler_interval_hours: sheet.scheduler_interval_hours ?? 1, daily_times: sheet.daily_times ?? ["09:00"], cloudinary_transform_enabled: sheet.cloudinary_transform_enabled ?? false, cloudinary_transform: sheet.cloudinary_transform ?? "", cloudinary_transform_mode: sheet.cloudinary_transform_mode ?? "replace" }} sampleUrl={rows.find((row) => row.status !== "complete" && /^https:\/\/res\.cloudinary\.com\//i.test(row.video_url))?.video_url} onCancel={() => setEditingSettings(false)} onSave={(values) => { onSettingsSaved(values).then(() => { toast.success("Sheet settings saved"); setEditingSettings(false); refresh(); }).catch((error) => toast.error(msg(error))); }} />}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -722,6 +812,13 @@ function SheetGrid({
             <Button variant="outline" onClick={() => { setFillMode("video_url"); setFillValue(""); }}>
               Fill URLs
             </Button>
+            <Button variant="outline" onClick={() => { setFillAllValue(""); setFillAllScope("empty"); setFillAllOpen(true); }}>
+              <Wand2 className="h-4 w-4 mr-2" /> Fill all Captions
+            </Button>
+            <Button variant="outline" className="text-destructive" onClick={() => setClearOpen(true)}>
+              <Trash2 className="h-4 w-4 mr-2" /> Clear Entire Sheet
+            </Button>
+
             <Button
               variant="outline"
               onClick={() =>

@@ -557,7 +557,7 @@ async function insertImportedRows(sb: any, sheetIdValue: string, rows: Array<{ c
 
 export const importSheetModeRows = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ sheet_id: sheetId, rows: z.array(importRowSchema).max(5000) }).parse(d))
+  .inputValidator((d: unknown) => z.object({ sheet_id: sheetId, rows: z.array(importRowSchema).max(5000), allow_partial: z.boolean().optional().default(false) }).parse(d))
   .handler(async ({ data, context }) => {
     await assertSheetOwner(context.supabase, context.userId, data.sheet_id);
     const errors: Array<{ row: number; message: string }> = [];
@@ -566,18 +566,26 @@ export const importSheetModeRows = createServerFn({ method: "POST" })
     data.rows.forEach((row, index) => {
       const urlError = validateCellValue("video_url", row.video_url);
       const captionError = validateCellValue("caption", row.caption);
-      if (!row.video_url.trim() || urlError || captionError) {
+      const missingUrl = !row.video_url.trim();
+      if (urlError || captionError || (missingUrl && !data.allow_partial)) {
         errors.push({ row: index + 1, message: urlError ?? captionError ?? "Video URL is required" });
         return;
       }
+      if (data.allow_partial && missingUrl && !row.caption.trim()) {
+        errors.push({ row: index + 1, message: "Row is empty" });
+        return;
+      }
       const key = row.video_url.trim().toLowerCase();
-      if (seen.has(key)) { errors.push({ row: index + 1, message: "Duplicate video URL" }); return; }
-      seen.add(key);
+      if (key) {
+        if (seen.has(key)) { errors.push({ row: index + 1, message: "Duplicate video URL" }); return; }
+        seen.add(key);
+      }
       valid.push({ ...row, caption: row.caption.trim(), video_url: row.video_url.trim() });
     });
     const result = await insertImportedRows(context.supabase, data.sheet_id, valid);
     return { ...result, skipped: errors.length, errors };
   });
+
 
 export const removeEmptySheetModeRows = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -727,3 +735,47 @@ export const SHEET_MODE_TIKTOK_FIELDS_AUDIT = {
   serverForwarding: "The current Reel Formula worker passes these values into the formula object, but buffer.server.ts does not serialize them into TikTok metadata; the current Buffer mapper returns no TikTok metadata for the Reel Formula path.",
   recommendation: "Remove or relabel these controls only after user approval at the Part I checkpoint.",
 } as const;
+
+export const fillAllSheetModeCaptions = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ sheet_id: sheetId, caption: z.string().trim().min(1).max(20000), scope: z.enum(["empty", "all"]).default("empty") }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertSheetOwner(context.supabase, context.userId, data.sheet_id);
+    const issue = validateCellValue("caption", data.caption);
+    if (issue) throw new Error(issue);
+    const { data: rows, error } = await context.supabase
+      .from("sheet_mode_rows")
+      .select("id,caption")
+      .eq("sheet_id", data.sheet_id);
+    if (error) throw new Error(error.message);
+    const targets = (rows ?? []).filter((row) => (data.scope === "all" ? true : !String(row.caption ?? "").trim()));
+    if (!targets.length) return { filled: 0 };
+    const result = await context.supabase
+      .from("sheet_mode_rows")
+      .update({ caption: data.caption })
+      .eq("sheet_id", data.sheet_id)
+      .in("id", targets.map((row) => row.id));
+    if (result.error) throw new Error(result.error.message);
+    return { filled: targets.length };
+  });
+
+export const clearSheetModeRows = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ sheet_id: sheetId }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertSheetOwner(context.supabase, context.userId, data.sheet_id);
+    const { data: rows, error } = await context.supabase
+      .from("sheet_mode_rows")
+      .select("id")
+      .eq("sheet_id", data.sheet_id);
+    if (error) throw new Error(error.message);
+    const ids = (rows ?? []).map((row) => row.id);
+    if (!ids.length) return { removed: 0 };
+    const statusResult = await context.supabase.from("sheet_mode_row_channel_status").delete().in("row_id", ids);
+    if (statusResult.error) throw new Error(statusResult.error.message);
+    const rowResult = await context.supabase.from("sheet_mode_rows").delete().eq("sheet_id", data.sheet_id);
+    if (rowResult.error) throw new Error(rowResult.error.message);
+    return { removed: ids.length };
+  });
