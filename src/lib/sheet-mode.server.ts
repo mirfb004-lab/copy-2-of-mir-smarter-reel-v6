@@ -136,17 +136,25 @@ async function loadTargets(sb: Sb, sheetId: string): Promise<Target[]> {
   })) as Target[];
 }
 
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 async function ensureChannelStatusRows(sb: Sb, sheetId: string, targets: Target[]) {
   if (!targets.length) return;
   const { data: rows, error: rowError } = await sb.from("sheet_mode_rows").select("id").eq("sheet_id", sheetId);
   if (rowError) throw new Error(rowError.message);
   const pairs = (rows ?? []).flatMap((row: { id: string }) => targets.map((target) => ({ row_id: row.id, channel_target_id: target.id, status: "F" })));
   if (!pairs.length) return;
-  const { error } = await sb.from("sheet_mode_row_channel_status").upsert(pairs, {
-    onConflict: "row_id,channel_target_id",
-    ignoreDuplicates: true,
-  });
-  if (error) throw new Error(error.message);
+  for (const batch of chunk(pairs, 500)) {
+    const { error } = await sb.from("sheet_mode_row_channel_status").upsert(batch, {
+      onConflict: "row_id,channel_target_id",
+      ignoreDuplicates: true,
+    });
+    if (error) throw new Error(error.message);
+  }
 }
 
 async function loadRows(sb: Sb, sheetId: string): Promise<Row[]> {
@@ -157,19 +165,23 @@ async function loadRows(sb: Sb, sheetId: string): Promise<Row[]> {
     .order("position", { ascending: true });
   if (error) throw new Error(error.message);
   if (!rows?.length) return [];
-  const { data: statuses, error: statusError } = await sb
-    .from("sheet_mode_row_channel_status")
-    .select("*")
-    .in(
-      "row_id",
-      rows.map((row) => row.id),
-    );
-  if (statusError) throw new Error(statusError.message);
+  // Chunked: a single .in() with hundreds of ids blows past the request URL
+  // length limit and PostgREST answers "Bad Request".
+  const statuses: any[] = [];
+  for (const batch of chunk(rows.map((row) => row.id), 100)) {
+    const { data, error: statusError } = await sb
+      .from("sheet_mode_row_channel_status")
+      .select("*")
+      .in("row_id", batch);
+    if (statusError) throw new Error(statusError.message);
+    statuses.push(...(data ?? []));
+  }
   const byRow = new Map<string, Row["channel_statuses"]>();
-  for (const status of statuses ?? [])
+  for (const status of statuses)
     byRow.set(status.row_id, [...(byRow.get(status.row_id) ?? []), status]);
   return rows.map((row) => ({ ...row, channel_statuses: byRow.get(row.id) ?? [] })) as Row[];
 }
+
 
 function targetEligibleForRow(row: Row, target: Target) {
   if (!target.is_active) return false;
