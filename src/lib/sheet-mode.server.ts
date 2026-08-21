@@ -246,6 +246,8 @@ async function createRun(sb: Sb, sheet: Sheet, idempotencyKey: string) {
       run_number: await nextRunNumber(sb, sheet.user_id),
       status: "publishing",
       current_step: "sheet_mode_preflight",
+      heartbeat_at: new Date().toISOString(),
+
       idempotency_key: idempotencyKey,
       strategy_used: "sheet_mode",
       step_state: { sheet_id: sheet.id, step: "preflight" },
