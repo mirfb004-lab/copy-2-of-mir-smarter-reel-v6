@@ -15,12 +15,15 @@ export const Route = createFileRoute("/api/public/cron/recover-stale")({
         const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
         // Runs stuck in an in-flight state with no recent heartbeat.
+        // Rows with a NULL heartbeat are stuck too — fall back to started_at.
         const { data: stuck } = await supabaseAdmin
           .from("runs")
           .select("id,user_id,channel_id,queue_item_id,attempts")
           .in("status", ["analyzing", "generating", "publishing"])
-          .lt("heartbeat_at", cutoff)
+          .lt("started_at", cutoff)
+          .or(`heartbeat_at.is.null,heartbeat_at.lt.${cutoff}`)
           .limit(50);
+
 
         const recovered: string[] = [];
         for (const r of stuck ?? []) {

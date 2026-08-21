@@ -136,17 +136,25 @@ async function loadTargets(sb: Sb, sheetId: string): Promise<Target[]> {
   })) as Target[];
 }
 
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 async function ensureChannelStatusRows(sb: Sb, sheetId: string, targets: Target[]) {
   if (!targets.length) return;
   const { data: rows, error: rowError } = await sb.from("sheet_mode_rows").select("id").eq("sheet_id", sheetId);
   if (rowError) throw new Error(rowError.message);
   const pairs = (rows ?? []).flatMap((row: { id: string }) => targets.map((target) => ({ row_id: row.id, channel_target_id: target.id, status: "F" })));
   if (!pairs.length) return;
-  const { error } = await sb.from("sheet_mode_row_channel_status").upsert(pairs, {
-    onConflict: "row_id,channel_target_id",
-    ignoreDuplicates: true,
-  });
-  if (error) throw new Error(error.message);
+  for (const batch of chunk(pairs, 500)) {
+    const { error } = await sb.from("sheet_mode_row_channel_status").upsert(batch, {
+      onConflict: "row_id,channel_target_id",
+      ignoreDuplicates: true,
+    });
+    if (error) throw new Error(error.message);
+  }
 }
 
 async function loadRows(sb: Sb, sheetId: string): Promise<Row[]> {
@@ -157,19 +165,23 @@ async function loadRows(sb: Sb, sheetId: string): Promise<Row[]> {
     .order("position", { ascending: true });
   if (error) throw new Error(error.message);
   if (!rows?.length) return [];
-  const { data: statuses, error: statusError } = await sb
-    .from("sheet_mode_row_channel_status")
-    .select("*")
-    .in(
-      "row_id",
-      rows.map((row) => row.id),
-    );
-  if (statusError) throw new Error(statusError.message);
+  // Chunked: a single .in() with hundreds of ids blows past the request URL
+  // length limit and PostgREST answers "Bad Request".
+  const statuses: any[] = [];
+  for (const batch of chunk(rows.map((row) => row.id), 100)) {
+    const { data, error: statusError } = await sb
+      .from("sheet_mode_row_channel_status")
+      .select("*")
+      .in("row_id", batch);
+    if (statusError) throw new Error(statusError.message);
+    statuses.push(...(data ?? []));
+  }
   const byRow = new Map<string, Row["channel_statuses"]>();
-  for (const status of statuses ?? [])
+  for (const status of statuses)
     byRow.set(status.row_id, [...(byRow.get(status.row_id) ?? []), status]);
   return rows.map((row) => ({ ...row, channel_statuses: byRow.get(row.id) ?? [] })) as Row[];
 }
+
 
 function targetEligibleForRow(row: Row, target: Target) {
   if (!target.is_active) return false;
@@ -234,6 +246,8 @@ async function createRun(sb: Sb, sheet: Sheet, idempotencyKey: string) {
       run_number: await nextRunNumber(sb, sheet.user_id),
       status: "publishing",
       current_step: "sheet_mode_preflight",
+      heartbeat_at: new Date().toISOString(),
+
       idempotency_key: idempotencyKey,
       strategy_used: "sheet_mode",
       step_state: { sheet_id: sheet.id, step: "preflight" },
@@ -399,13 +413,32 @@ export async function runSheetModeCycle(
   const run = await createRun(sb, sheet, idempotencyKey);
   if (run.status === "complete" && reason === "scheduled")
     return { sheetId, runId: run.id, skipped: true, reason: "already_complete" };
-  const targets = await loadTargets(sb, sheet.id);
-  await ensureChannelStatusRows(sb, sheet.id, targets);
-  const rows = sortRows(
-    (await loadRows(sb, sheet.id)).filter((row) => eligible(row, targets)),
-    sheet.selection_rule,
-  );
+  let targets: Target[];
+  let rows: Row[];
+  try {
+    targets = await loadTargets(sb, sheet.id);
+    await ensureChannelStatusRows(sb, sheet.id, targets);
+    rows = sortRows(
+      (await loadRows(sb, sheet.id)).filter((row) => eligible(row, targets)),
+      sheet.selection_rule,
+    );
+  } catch (error) {
+    // Never leave the run row stranded in "publishing" when setup fails.
+    const message = errorMessage(error);
+    await sb
+      .from("runs")
+      .update({
+        status: "failed",
+        current_step: "failed",
+        finished_at: new Date().toISOString(),
+        heartbeat_at: new Date().toISOString(),
+        error: message,
+      })
+      .eq("id", run.id);
+    throw error;
+  }
   const activeTargetIds = new Set(targets.map((target) => target.id));
+
   let budget = Math.max(1, Number(sheet.rows_per_run ?? 1));
   let attempted = 0;
   let succeeded = 0;
