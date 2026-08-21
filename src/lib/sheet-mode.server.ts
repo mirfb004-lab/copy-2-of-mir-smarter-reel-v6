@@ -411,13 +411,32 @@ export async function runSheetModeCycle(
   const run = await createRun(sb, sheet, idempotencyKey);
   if (run.status === "complete" && reason === "scheduled")
     return { sheetId, runId: run.id, skipped: true, reason: "already_complete" };
-  const targets = await loadTargets(sb, sheet.id);
-  await ensureChannelStatusRows(sb, sheet.id, targets);
-  const rows = sortRows(
-    (await loadRows(sb, sheet.id)).filter((row) => eligible(row, targets)),
-    sheet.selection_rule,
-  );
+  let targets: Target[];
+  let rows: Row[];
+  try {
+    targets = await loadTargets(sb, sheet.id);
+    await ensureChannelStatusRows(sb, sheet.id, targets);
+    rows = sortRows(
+      (await loadRows(sb, sheet.id)).filter((row) => eligible(row, targets)),
+      sheet.selection_rule,
+    );
+  } catch (error) {
+    // Never leave the run row stranded in "publishing" when setup fails.
+    const message = errorMessage(error);
+    await sb
+      .from("runs")
+      .update({
+        status: "failed",
+        current_step: "failed",
+        finished_at: new Date().toISOString(),
+        heartbeat_at: new Date().toISOString(),
+        error: message,
+      })
+      .eq("id", run.id);
+    throw error;
+  }
   const activeTargetIds = new Set(targets.map((target) => target.id));
+
   let budget = Math.max(1, Number(sheet.rows_per_run ?? 1));
   let attempted = 0;
   let succeeded = 0;
