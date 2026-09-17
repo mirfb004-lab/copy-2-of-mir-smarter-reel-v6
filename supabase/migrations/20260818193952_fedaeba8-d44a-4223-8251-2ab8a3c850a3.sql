@@ -1,2 +1,0 @@
-REVOKE EXECUTE ON FUNCTION public.claim_formula_insight_sync(uuid, timestamptz) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.claim_formula_insight_sync(uuid, timestamptz) TO service_role;

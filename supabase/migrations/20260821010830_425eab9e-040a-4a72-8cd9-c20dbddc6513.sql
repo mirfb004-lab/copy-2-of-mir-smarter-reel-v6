@@ -1,1 +1,0 @@
-UPDATE public.sheet_mode_sheets SET next_run_at = now() - interval '1 minute' WHERE id = '6fd9a706-91e7-44c9-8e90-57f6075e0345';
