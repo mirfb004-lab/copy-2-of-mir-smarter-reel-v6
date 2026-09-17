@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -299,7 +299,6 @@ export type Database = {
           custom_objective: string | null
           custom_scheduled_at: string | null
           description: string | null
-          frame_sampling_seconds: number
           id: string
           name: string
           objective: string
@@ -321,7 +320,6 @@ export type Database = {
           custom_objective?: string | null
           custom_scheduled_at?: string | null
           description?: string | null
-          frame_sampling_seconds?: number
           id?: string
           name: string
           objective?: string
@@ -343,7 +341,6 @@ export type Database = {
           custom_objective?: string | null
           custom_scheduled_at?: string | null
           description?: string | null
-          frame_sampling_seconds?: number
           id?: string
           name?: string
           objective?: string
@@ -2051,8 +2048,6 @@ export type Database = {
       video_queue: {
         Row: {
           added_at: string
-          ai_frames: Json | null
-          ai_frames_at: string | null
           attempts: number
           campaign_id: string | null
           channel_id: string | null
@@ -2070,8 +2065,6 @@ export type Database = {
         }
         Insert: {
           added_at?: string
-          ai_frames?: Json | null
-          ai_frames_at?: string | null
           attempts?: number
           campaign_id?: string | null
           channel_id?: string | null
@@ -2089,8 +2082,6 @@ export type Database = {
         }
         Update: {
           added_at?: string
-          ai_frames?: Json | null
-          ai_frames_at?: string | null
           attempts?: number
           campaign_id?: string | null
           channel_id?: string | null
@@ -2165,10 +2156,6 @@ export type Database = {
       claim_sheet_mode_schedule: {
         Args: { _next_run_at: string; _now: string; _sheet_id: string }
         Returns: boolean
-      }
-      compute_next_daily_run_at: {
-        Args: { _now: string; _times: string[]; _tz: string }
-        Returns: string
       }
       move_recurring_schedule_item: {
         Args: { _direction: string; _item_id: string }
@@ -2247,12 +2234,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2276,11 +2263,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2301,11 +2288,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2326,11 +2313,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2343,11 +2330,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
