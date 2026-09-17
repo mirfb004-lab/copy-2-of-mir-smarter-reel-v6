@@ -288,6 +288,10 @@ export const moveRecurringScheduleItem = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid(), direction: z.enum(["up", "down"]) }).parse(d))
   .handler(async ({ data, context }) => {
+    const { data: item } = await context.supabase.from("recurring_schedule_items").select("id,schedule_id").eq("id", data.id).maybeSingle();
+    if (!item) throw new Error("Rotation item not found");
+    const { data: schedule } = await context.supabase.from("recurring_schedules").select("id").eq("id", item.schedule_id).eq("user_id", context.userId).maybeSingle();
+    if (!schedule) throw new Error("Recurring schedule not found");
     const { data: moved, error } = await context.supabase.rpc("move_recurring_schedule_item", { _item_id: data.id, _direction: data.direction });
     if (error) throw new Error(error.message);
     if (!moved) throw new Error("Rotation item not found");

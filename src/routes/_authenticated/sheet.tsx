@@ -157,8 +157,9 @@ function SheetPage() {
   const refreshFn = useServerFn(refreshCampaignSheet);
   const qc = useQueryClient();
   const campaignId = useScopedCampaignId();
-  const { data } = useQuery({ queryKey: ["runs", campaignId], queryFn: () => fn({ data: { campaign_id: campaignId } }), refetchInterval: 15000 });
-  const { data: imported } = useQuery({ queryKey: ["imported-posts", campaignId], queryFn: () => importedFn({ data: { campaign_id: campaignId } }), refetchInterval: 60000 });
+  const [q, setQ] = useState("");
+  const { data } = useQuery({ queryKey: ["runs", campaignId, q], queryFn: () => fn({ data: { campaign_id: campaignId, search: q } }), refetchInterval: 15000 });
+  const { data: imported } = useQuery({ queryKey: ["imported-posts", campaignId, q], queryFn: () => importedFn({ data: { campaign_id: campaignId, search: q } }), refetchInterval: 60000 });
   // Keep this campaign's older posts' metrics fresh without waiting for the next run.
   const refreshMut = useMutation({
     mutationFn: () => refreshFn({ data: { campaign_id: campaignId } }),
@@ -176,7 +177,6 @@ function SheetPage() {
       .sort((a, b) => new Date(b.started_at || 0).getTime() - new Date(a.started_at || 0).getTime()),
     [data, imported],
   );
-  const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
   const perPage = 25;
 
@@ -187,14 +187,45 @@ function SheetPage() {
   }, [rows, q]);
   const pageRows = filtered.slice(page * perPage, page * perPage + perPage);
 
+  async function loadExportRows() {
+    const [exportedRuns, exportedImported] = await Promise.all([
+      fn({ data: { campaign_id: campaignId, export_all: true } }),
+      importedFn({ data: { campaign_id: campaignId, export_all: true } }),
+    ]);
+    return [...flatten(exportedRuns), ...flattenImported(exportedImported)]
+      .sort((a, b) => new Date(b.started_at || 0).getTime() - new Date(a.started_at || 0).getTime());
+  }
+
+  async function exportCsv() {
+    try {
+      download("loop-runs.csv", "text/csv", toCsv(await loadExportRows()));
+      toast.success("Exported CSV");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "CSV export failed");
+    }
+  }
+
+  async function exportJson() {
+    try {
+      download("loop-runs.json", "application/json", JSON.stringify(await loadExportRows(), null, 2));
+      toast.success("Exported JSON");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "JSON export failed");
+    }
+  }
+
   async function exportXlsx() {
-    const XLSX = await import("xlsx");
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Runs");
-    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
-    download("loop-runs.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", new Blob([buf]));
-    toast.success("Exported XLSX");
+    try {
+      const XLSX = await import("xlsx");
+      const ws = XLSX.utils.json_to_sheet(await loadExportRows());
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Runs");
+      const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+      download("loop-runs.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", new Blob([buf]));
+      toast.success("Exported XLSX");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "XLSX export failed");
+    }
   }
 
   return (
@@ -209,9 +240,9 @@ function SheetPage() {
           <Button variant="outline" onClick={() => refreshMut.mutate()} disabled={refreshMut.isPending}>
             <RefreshCw className={`h-4 w-4 mr-2 ${refreshMut.isPending ? "animate-spin" : ""}`}/>Refresh metrics
           </Button>
-          <Button variant="outline" onClick={() => download("loop-runs.csv", "text/csv", toCsv(rows))}><Download className="h-4 w-4 mr-2"/>CSV</Button>
-          <Button variant="outline" onClick={exportXlsx}><Download className="h-4 w-4 mr-2"/>XLSX</Button>
-          <Button variant="outline" onClick={() => download("loop-runs.json", "application/json", JSON.stringify(rows, null, 2))}><Download className="h-4 w-4 mr-2"/>JSON</Button>
+          <Button variant="outline" onClick={() => void exportCsv()}><Download className="h-4 w-4 mr-2"/>CSV</Button>
+          <Button variant="outline" onClick={() => void exportXlsx()}><Download className="h-4 w-4 mr-2"/>XLSX</Button>
+          <Button variant="outline" onClick={() => void exportJson()}><Download className="h-4 w-4 mr-2"/>JSON</Button>
         </div>
       </div>
 

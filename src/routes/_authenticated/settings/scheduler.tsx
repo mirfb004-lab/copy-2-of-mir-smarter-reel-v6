@@ -28,8 +28,8 @@ function SchedulerSettings() {
   const qc = useQueryClient();
   const campaignId = useScopedCampaignId();
 
-  const { data } = useQuery({ queryKey: ["schedules", campaignId], queryFn: () => list({ data: { campaign_id: campaignId } }) });
-  const { data: chans } = useQuery({ queryKey: ["channels", campaignId], queryFn: () => chansFn({ data: { campaign_id: campaignId } }) });
+  const { data, isError: schedulesError } = useQuery({ queryKey: ["schedules", campaignId], queryFn: () => list({ data: { campaign_id: campaignId } }) });
+  const { data: chans, isError: chansError } = useQuery({ queryKey: ["channels", campaignId], queryFn: () => chansFn({ data: { campaign_id: campaignId } }) });
 
   const [channelId, setChannelId] = useState<string>("");
   const [mode, setMode] = useState<"interval"|"daily_times"|"manual">("interval");
@@ -58,6 +58,10 @@ function SchedulerSettings() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["schedules"] }),
   });
 
+
+  if (schedulesError || chansError) {
+    return <div className="text-sm text-destructive">Unable to load scheduler settings. Please try again.</div>;
+  }
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -120,15 +124,15 @@ function SchedulerSettings() {
                       {s.paused ? "paused" : s.active ? "active" : "off"}
                     </Badge>
                     {s.paused ? (
-                      <Button size="icon" variant="ghost" title="Resume" onClick={() => pauseMut.mutate({ id: s.id, paused: false })}>
+                      <Button size="icon" variant="ghost" title="Resume" disabled={pauseMut.isPending} onClick={() => pauseMut.mutate({ id: s.id, paused: false })}>
                         <Play className="h-4 w-4 text-success"/>
                       </Button>
                     ) : (
-                      <Button size="icon" variant="ghost" title="Pause" onClick={() => pauseMut.mutate({ id: s.id, paused: true })}>
+                      <Button size="icon" variant="ghost" title="Pause" disabled={pauseMut.isPending} onClick={() => pauseMut.mutate({ id: s.id, paused: true })}>
                         <Pause className="h-4 w-4"/>
                       </Button>
                     )}
-                    <Button size="icon" variant="ghost" onClick={() => delMut.mutate(s.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                    <Button size="icon" variant="ghost" disabled={delMut.isPending} onClick={() => delMut.mutate(s.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
 
                   </li>
                 );

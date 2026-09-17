@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard, ListVideo, Table2, Brain, LogOut, Sparkles, TrendingUp,
-  Cable, Wand2, Search, Clock, SlidersHorizontal, FolderKanban, Menu, Globe, Repeat2,
+  Cable, Wand2, Search, Clock, SlidersHorizontal, FolderKanban, Menu, Globe, Repeat2, Sun, Moon, Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { CampaignSelector } from "@/components/campaign-selector";
 import { InstructionsDialog } from "@/components/instructions-dialog";
 import { ActiveCampaignProvider, useCampaignScope } from "@/components/campaign-context";
 import { Badge } from "@/components/ui/badge";
+import { useTheme } from "@/components/theme-provider";
 
 const UNLOCK_KEY = "loop:unlocked";
 
@@ -24,7 +25,9 @@ const nav = [
   { to: "/learning", label: "Learning", icon: Brain },
   { to: "/insights", label: "Insights", icon: TrendingUp },
   { to: "/reel-formula", label: "1 Reel Formula", icon: Repeat2 },
+  { to: "/usage", label: "Usage & Activity", icon: Gauge },
 ];
+
 
 const settingsNav = [
   { to: "/settings/buffer", label: "Buffer", icon: Cable },
@@ -48,8 +51,9 @@ function SidebarContent({ onNavigate, onLock }: { onNavigate?: () => void; onLoc
         </div>
       </div>
 
-      <div className="px-3 pt-3">
+      <div className="px-3 pt-3 space-y-2">
         <GlobalModeButton onNavigate={onNavigate} />
+        <ThemeModeButton />
       </div>
 
       <div className="px-3 pt-3">
@@ -129,6 +133,17 @@ function GlobalModeButton({ onNavigate }: { onNavigate?: () => void }) {
     >
       <Globe className="h-4 w-4 mr-2" />
       {mode === "global" ? "Global Mode: on" : "Main Global Dashboard"}
+    </Button>
+  );
+}
+
+function ThemeModeButton() {
+  const { mode, toggleMode } = useTheme();
+  const nextMode = mode === "dark" ? "light" : "dark";
+  return (
+    <Button variant="outline" size="sm" className="w-full justify-start" onClick={toggleMode} aria-label={`Switch to ${nextMode} mode`}>
+      {mode === "dark" ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
+      {mode === "dark" ? "Light mode" : "Dark mode"}
     </Button>
   );
 }

@@ -51,12 +51,12 @@ function GlobalDashboard() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | "active" | "paused" | "stopped">("all");
 
-  const { data: stats } = useQuery({ queryKey: ["global-stats"], queryFn: () => statsFn(), refetchInterval: 30_000 });
-  const { data: progress, isFetching } = useQuery({
+  const { data: stats, isError: statsError } = useQuery({ queryKey: ["global-stats"], queryFn: () => statsFn(), refetchInterval: 30_000 });
+  const { data: progress, isFetching, isError: progressError } = useQuery({
     queryKey: ["global-progress", page, search, status],
     queryFn: () => progressFn({ data: { page, pageSize: 50, search, status } }),
   });
-  const { data: failures } = useQuery({ queryKey: ["global-failures"], queryFn: () => failuresFn() });
+  const { data: failures, isError: failuresError } = useQuery({ queryKey: ["global-failures"], queryFn: () => failuresFn() });
 
   const retryMut = useMutation({
     mutationFn: (v: { ids?: string[]; all?: boolean }) => retryFn({ data: v }),
@@ -68,6 +68,10 @@ function GlobalDashboard() {
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Retry failed"),
   });
+
+  if (statsError || progressError || failuresError) {
+    return <div className="text-sm text-destructive">Unable to load the global dashboard. Please try again.</div>;
+  }
 
   const total = progress?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / 50));

@@ -19,10 +19,22 @@ export const getAllSettings = createServerFn({ method: "POST" })
 
     // Self-heal: accounts created before the defaults trigger (or partially
     // seeded rows) would otherwise leave the settings pages stuck loading.
-    if (!ai.data) ai = await sb.from("ai_settings").insert({ user_id: uid }).select().maybeSingle();
-    if (!analysis.data) analysis = await sb.from("analysis_settings").insert({ user_id: uid }).select().maybeSingle();
-    if (!general.data) general = await sb.from("settings").insert({ user_id: uid }).select().maybeSingle();
-    if (!profile.data) profile = await sb.from("profiles").insert({ id: uid }).select().maybeSingle();
+    if (!ai.data) {
+      ai = await sb.from("ai_settings").insert({ user_id: uid }).select().maybeSingle();
+      if (ai.error) throw new Error(ai.error.message);
+    }
+    if (!analysis.data) {
+      analysis = await sb.from("analysis_settings").insert({ user_id: uid }).select().maybeSingle();
+      if (analysis.error) throw new Error(analysis.error.message);
+    }
+    if (!general.data) {
+      general = await sb.from("settings").insert({ user_id: uid }).select().maybeSingle();
+      if (general.error) throw new Error(general.error.message);
+    }
+    if (!profile.data) {
+      profile = await sb.from("profiles").insert({ id: uid }).select().maybeSingle();
+      if (profile.error) throw new Error(profile.error.message);
+    }
 
     // Campaign mode: use the campaign override row when it exists, else the global row.
     let aiRow = ai.data;

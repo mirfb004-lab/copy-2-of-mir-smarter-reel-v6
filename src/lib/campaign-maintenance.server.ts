@@ -23,10 +23,15 @@ export async function purgeCampaignRuns(sb: Sb, campaignId: string) {
 export async function resequenceCampaignQueue(sb: Sb, campaignId: string) {
   const { data: items } = await sb.from("video_queue")
     .select("id,position").eq("campaign_id", campaignId).order("position", { ascending: true });
-  let i = 1;
-  for (const it of items ?? []) {
-    if (it.position !== i) await sb.from("video_queue").update({ position: i }).eq("id", it.id);
-    i++;
+  const updates: Array<{ id: string; position: number }> = [];
+  (items ?? []).forEach((it: any, index: number) => {
+    const position = index + 1;
+    if (it.position !== position) updates.push({ id: it.id, position });
+  });
+
+  for (let start = 0; start < updates.length; start += 500) {
+    const { error } = await sb.from("video_queue").upsert(updates.slice(start, start + 500), { onConflict: "id" });
+    if (error) throw new Error(error.message);
   }
 }
 

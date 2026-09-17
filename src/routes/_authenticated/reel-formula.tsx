@@ -167,7 +167,7 @@ function ReelFormulaPage() {
     <div className="space-y-6 max-w-5xl">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2"><Repeat2 className="h-5 w-5 text-primary" />1 Reel Formula</h1>
-        <p className="text-sm text-muted-foreground">A separate recurring publisher for one fixed media asset. It does not use AI captions, the adaptive queue, or campaign learning.</p>
+        <p className="text-sm text-muted-foreground">A separate recurring publisher for one fixed media asset. It follows its own execution path rather than the adaptive queue and campaign-learning path, while still using shared workspace connections where configured.</p>
       </div>
 
       <Card>

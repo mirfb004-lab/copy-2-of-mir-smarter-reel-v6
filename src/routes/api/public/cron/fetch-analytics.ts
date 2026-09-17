@@ -6,13 +6,13 @@
 //   3. Upsert post_analytics, refresh publish proof, evaluate predictions.
 //   4. Recompute durable trend insights for each touched user.
 import { createFileRoute } from "@tanstack/react-router";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth.server";
 
 export const Route = createFileRoute("/api/public/cron/fetch-analytics")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const apikey = request.headers.get("apikey");
-        if (!apikey || apikey !== process.env['SUPABASE_PUBLISHABLE_KEY']) {
+        if (!isAuthorizedCronRequest(request)) {
           return new Response("Unauthorized", { status: 401 });
         }
 

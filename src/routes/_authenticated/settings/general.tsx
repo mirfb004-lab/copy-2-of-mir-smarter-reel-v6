@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
+import { ThemeSettings } from "@/components/theme-settings";
 
 export const Route = createFileRoute("/_authenticated/settings/general")({ component: GeneralSettings });
 
@@ -18,7 +19,7 @@ function GeneralSettings() {
   const updP = useServerFn(updateProfile);
   const qc = useQueryClient();
   const campaignId = useScopedCampaignId();
-  const { data } = useQuery({ queryKey: ["settings", campaignId], queryFn: () => get({ data: { campaign_id: campaignId } }) });
+  const { data, isError: settingsError } = useQuery({ queryKey: ["settings", campaignId], queryFn: () => get({ data: { campaign_id: campaignId } }) });
 
   const [g, setG] = useState<any>(null);
   const [p, setP] = useState<any>(null);
@@ -38,6 +39,7 @@ function GeneralSettings() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
+  if (settingsError) return <div className="text-sm text-destructive">Unable to load general settings. Please try again.</div>;
   if (!g || !p) return <div className="text-sm text-muted-foreground">Loading…</div>;
 
   return (
@@ -46,6 +48,8 @@ function GeneralSettings() {
         <h1 className="text-2xl font-semibold tracking-tight">General</h1>
         <p className="text-sm text-muted-foreground">Retry, rate limits, analytics delay, profile.</p>
       </div>
+
+      <ThemeSettings />
 
       <Card>
         <CardHeader><CardTitle>Runtime</CardTitle><CardDescription>How the loop handles failures & pacing.</CardDescription></CardHeader>

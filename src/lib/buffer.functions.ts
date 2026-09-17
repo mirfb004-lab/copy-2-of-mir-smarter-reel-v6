@@ -66,39 +66,6 @@ export const deleteBufferCred = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const testBufferCred = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { data: cred, error } = await context.supabase
-      .from("buffer_credentials")
-      .select("api_token,graphql_endpoint")
-      .eq("id", data.id)
-      .single();
-    if (error || !cred) throw new Error("Credential not found");
-    const { makeBufferClient } = await import("./buffer.server");
-    const result = await makeBufferClient(cred.api_token, cred.graphql_endpoint).testConnection();
-    await context.supabase
-      .from("buffer_credentials")
-      .update({ status: result.ok ? "connected" : "error", last_tested_at: new Date().toISOString() })
-      .eq("id", data.id);
-    return result;
-  });
-
-export const verifyBufferSchema = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    const { data: cred, error } = await context.supabase
-      .from("buffer_credentials")
-      .select("api_token,graphql_endpoint")
-      .eq("id", data.id)
-      .single();
-    if (error || !cred) throw new Error("Credential not found");
-    const { makeBufferClient } = await import("./buffer.server");
-    return await makeBufferClient(cred.api_token, cred.graphql_endpoint).verifySchema();
-  });
-
 export const syncBufferChannels = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))

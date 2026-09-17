@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -24,12 +23,20 @@ function columnLabel(index: number) {
 }
 
 export async function parseImportFile(file: File): Promise<ParsedImportFile> {
-  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-  const sheetName = workbook.SheetNames[0];
-  const matrix = XLSX.utils
-    .sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: "" })
-    .map((row) => (row ?? []).map((cell) => String(cell ?? "").trim()));
-  return { fileName: file.name, matrix };
+  const buffer = await file.arrayBuffer();
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL("../workers/sheet-mode-import.worker.ts", import.meta.url), { type: "module" });
+    worker.onmessage = (event: MessageEvent<{ ok: true; fileName: string; matrix: string[][] } | { ok: false; error: string }>) => {
+      worker.terminate();
+      if (event.data.ok) resolve({ fileName: event.data.fileName, matrix: event.data.matrix });
+      else reject(new Error(event.data.error));
+    };
+    worker.onerror = () => {
+      worker.terminate();
+      reject(new Error("Could not parse import file"));
+    };
+    worker.postMessage({ fileName: file.name, buffer }, [buffer]);
+  });
 }
 
 export function SheetModeImportWizard({

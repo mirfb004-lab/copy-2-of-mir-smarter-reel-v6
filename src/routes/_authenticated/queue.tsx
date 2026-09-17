@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Trash2, RotateCcw, Plus, ListVideo, ArrowUp, ArrowDown, AlertTriangle, RefreshCw, Upload, ArrowRightLeft } from "lucide-react";
 import { ChannelSelect } from "@/components/channel-picker";
+import { FrameExtractionRunner } from "@/components/frame-extraction-runner";
 
 export const Route = createFileRoute("/_authenticated/queue")({ component: QueuePage });
 
@@ -104,6 +105,7 @@ function QueuePage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Queue</h1>
         <p className="text-sm text-muted-foreground">Paste Cloudinary URLs. Each run consumes one URL from the top. Duplicates are automatically skipped.</p>
+        <FrameExtractionRunner />
       </div>
 
       <Card>

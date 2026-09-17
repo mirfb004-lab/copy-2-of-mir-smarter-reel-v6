@@ -17,6 +17,8 @@ import { useState } from "react";
 import { Play, Pause, Square, Trash2, Plus, CircleCheck, RotateCcw, RefreshCw, Eraser, Pencil, Check, X } from "lucide-react";
 import { MultiChannelCampaignPanel } from "@/components/multi-channel-campaign-panel";
 import { CloudinaryTransformFields } from "@/components/cloudinary-transform-fields";
+import { FrameSamplingFields } from "@/components/frame-sampling-fields";
+import { updateCampaignFrameSampling } from "@/lib/video-frames.functions";
 import { SchedulerStatsPanel } from "@/components/scheduler-stats-panel";
 import { SchedulerItemHistory } from "@/components/scheduler-item-history";
 import {
@@ -51,6 +53,8 @@ function CampaignsPage() {
   const reset = useServerFn(resetCampaign);
   const updatePublishing = useServerFn(updateCampaignPublishing);
   const updateCloudinary = useServerFn(updateCampaignCloudinaryTransform);
+  const updateFrameSampling = useServerFn(updateCampaignFrameSampling);
+
   const listSamples = useServerFn(listSampleCaptions);
   const createSample = useServerFn(createSampleCaption);
   const updateSample = useServerFn(updateSampleCaption);
@@ -60,9 +64,9 @@ function CampaignsPage() {
   const qc = useQueryClient();
   const activeId = useActiveCampaignId();
 
-  const { data: campaigns } = useQuery({ queryKey: ["campaigns"], queryFn: () => list() });
+  const { data: campaigns, isError: campaignsError } = useQuery({ queryKey: ["campaigns"], queryFn: () => list() });
   const activeCampaign = (campaigns ?? []).find((c) => c.id === activeId) as any;
-  const { data: samples } = useQuery({
+  const { data: samples, isError: samplesError } = useQuery({
     queryKey: ["sample-captions", activeId],
     queryFn: () => listSamples({ data: { campaign_id: activeId! } }),
     enabled: Boolean(activeId),
@@ -80,6 +84,7 @@ function CampaignsPage() {
   const [cloudinaryTransformEnabled, setCloudinaryTransformEnabled] = useState(false);
   const [cloudinaryTransform, setCloudinaryTransform] = useState("");
   const [cloudinaryTransformMode, setCloudinaryTransformMode] = useState<"replace" | "stack">("replace");
+  const [frameSampling, setFrameSampling] = useState(10);
   const [sampleText, setSampleText] = useState("");
   const [editingSampleId, setEditingSampleId] = useState<string | null>(null);
   const [editingSampleText, setEditingSampleText] = useState("");
@@ -96,10 +101,11 @@ function CampaignsPage() {
       cloudinary_transform_enabled: cloudinaryTransformEnabled,
       cloudinary_transform: cloudinaryTransform,
       cloudinary_transform_mode: cloudinaryTransformMode,
+      frame_sampling_seconds: frameSampling,
     } }),
     onSuccess: (r) => {
       toast.success("Campaign created");
-      setName(""); setDesc(""); setCustomObj(""); setChannelMode("single"); setCloudinaryTransformEnabled(false); setCloudinaryTransform(""); setCloudinaryTransformMode("replace");
+      setName(""); setDesc(""); setCustomObj(""); setChannelMode("single"); setCloudinaryTransformEnabled(false); setCloudinaryTransform(""); setCloudinaryTransformMode("replace"); setFrameSampling(10);
       setActiveCampaignId(r.id);
       qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
@@ -114,6 +120,11 @@ function CampaignsPage() {
   const cloudinaryMut = useMutation({
     mutationFn: (value: { cloudinary_transform_enabled: boolean; cloudinary_transform: string; cloudinary_transform_mode: "replace" | "stack" }) => updateCloudinary({ data: { id: activeId!, ...value } }),
     onSuccess: () => { toast.success("Cloudinary transformation settings saved"); qc.invalidateQueries({ queryKey: ["campaigns"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  const frameSamplingMut = useMutation({
+    mutationFn: (frame_sampling_seconds: number) => updateFrameSampling({ data: { id: activeId!, frame_sampling_seconds } }),
+    onSuccess: () => { toast.success("Frame sampling saved"); qc.invalidateQueries({ queryKey: ["campaigns"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
   const publishMut = useMutation({
@@ -157,6 +168,10 @@ function CampaignsPage() {
     onSuccess: () => { toast.success("Sample caption deleted"); qc.invalidateQueries({ queryKey: ["sample-captions", activeId] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
+
+  if (campaignsError || samplesError) {
+    return <div className="text-sm text-destructive">Unable to load campaigns. Please try again.</div>;
+  }
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -207,6 +222,7 @@ function CampaignsPage() {
             />
           </div>
           <div className="md:col-span-2"><CloudinaryTransformFields enabled={cloudinaryTransformEnabled} transformation={cloudinaryTransform} mode={cloudinaryTransformMode} onEnabledChange={setCloudinaryTransformEnabled} onTransformationChange={setCloudinaryTransform} onModeChange={setCloudinaryTransformMode} /></div>
+          <div className="md:col-span-2"><FrameSamplingFields value={frameSampling} onChange={setFrameSampling} /></div>
           <div className="flex items-center gap-3 md:col-span-2 pt-2">
             <Switch id="sl" checked={shareLearning} onCheckedChange={setShareLearning}/>
             <Label htmlFor="sl" className="text-sm font-normal">Share learning across all campaigns (default: isolated)</Label>
@@ -222,6 +238,21 @@ function CampaignsPage() {
       {activeCampaign && <MultiChannelCampaignPanel campaignId={activeCampaign.id} campaignMode={activeCampaign.channel_mode ?? "single"} />}
 
       <SchedulerStatsPanel source="loop" />
+
+      {activeCampaign && (
+        <Card>
+          <CardHeader>
+            <CardTitle>AI Video Frame Sampling</CardTitle>
+            <CardDescription>How often a preview frame is captured from each video in your browser to feed the Vision AI captioning engine.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <FrameSamplingFields
+              value={Number(activeCampaign.frame_sampling_seconds ?? 10) || 10}
+              onChange={(seconds) => frameSamplingMut.mutate(seconds)}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {activeCampaign && <Card><CardHeader><CardTitle>Cloudinary transformation</CardTitle><CardDescription>Applied only to the temporary media URL sent to Buffer. The campaign queue URL is never rewritten.</CardDescription></CardHeader><CardContent><CloudinaryTransformFields enabled={Boolean(activeCampaign.cloudinary_transform_enabled)} transformation={activeCampaign.cloudinary_transform ?? ""} mode={activeCampaign.cloudinary_transform_mode === "stack" ? "stack" : "replace"} onEnabledChange={(cloudinary_transform_enabled) => cloudinaryMut.mutate({ cloudinary_transform_enabled, cloudinary_transform: activeCampaign.cloudinary_transform ?? "", cloudinary_transform_mode: activeCampaign.cloudinary_transform_mode === "stack" ? "stack" : "replace" })} onTransformationChange={(cloudinary_transform) => cloudinaryMut.mutate({ cloudinary_transform_enabled: Boolean(activeCampaign.cloudinary_transform_enabled), cloudinary_transform, cloudinary_transform_mode: activeCampaign.cloudinary_transform_mode === "stack" ? "stack" : "replace" })} onModeChange={(cloudinary_transform_mode) => cloudinaryMut.mutate({ cloudinary_transform_enabled: Boolean(activeCampaign.cloudinary_transform_enabled), cloudinary_transform: activeCampaign.cloudinary_transform ?? "", cloudinary_transform_mode })} /></CardContent></Card>}
 

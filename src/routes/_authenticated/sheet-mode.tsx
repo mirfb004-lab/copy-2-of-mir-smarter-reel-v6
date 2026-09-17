@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import * as XLSX from "xlsx";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Plus,
@@ -588,6 +588,7 @@ function SheetGrid({
   const [fillMode, setFillMode] = useState<"caption" | "video_url" | null>(null);
   const [fillValue, setFillValue] = useState("");
   const [customizationTarget, setCustomizationTarget] = useState<string | null>(null);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
   const [customizationDraft, setCustomizationDraft] = useState<Record<string, any>>({});
   const [editingSettings, setEditingSettings] = useState(false);
   const [importFile, setImportFile] = useState<ParsedImportFile | null>(null);
@@ -924,7 +925,7 @@ function SheetGrid({
           </Button>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          <div ref={gridScrollRef} className="max-h-[70vh] overflow-auto">
             <table className="w-full min-w-[1100px] text-sm">
               <thead>
                 <tr className="border-b bg-muted/40">
@@ -973,29 +974,17 @@ function SheetGrid({
                 </tr>
               </thead>
               <tbody>
-                {rows.length ? (
-                  rows.map((row) => (
-                    <GridRow
-                      key={row.id}
-                      row={row}
-                      targets={active}
-                      selected={selected}
-                      select={select}
-                      updateRow={(data) => run(updateRow({ data }))}
-                      deleteRow={(id) => run(deleteRow({ data: { id } }), "Row deleted")}
-                      updateCell={(data) => run(updateCell({ data }))}
-                    />
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={4 + active.length * 2}
-                      className="px-3 py-10 text-center text-muted-foreground"
-                    >
-                      No rows yet. Add a row or import content.
-                    </td>
-                  </tr>
-                )}
+                <VirtualizedGridBody
+                  scrollRef={gridScrollRef}
+                  rows={rows}
+                  targets={active}
+                  selected={selected}
+                  select={select}
+                  updateRow={(data) => run(updateRow({ data }))}
+                  deleteRow={(id) => run(deleteRow({ data: { id } }), "Row deleted")}
+                  updateCell={(data) => run(updateCell({ data }))}
+                  colSpan={4 + active.length * 2}
+                />
               </tbody>
             </table>
           </div>
@@ -1149,6 +1138,101 @@ function SheetGrid({
     </div>
   );
 }
+const ESTIMATED_GRID_ROW_HEIGHT = 190;
+
+function VirtualizedGridBody({
+  scrollRef,
+  rows,
+  targets,
+  selected,
+  select,
+  updateRow,
+  deleteRow,
+  updateCell,
+  colSpan,
+}: {
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  rows: Row[];
+  targets: Target[];
+  selected: Record<string, Set<string>>;
+  select: (column: string, id: string, checked: boolean) => void;
+  updateRow: (r: { id: string; caption: string; video_url: string; priority: number | null; weight: number | null }) => void;
+  deleteRow: (id: string) => void;
+  updateCell: (c: { id: string; status: "F" | "T"; published_url: string | null }) => void;
+  colSpan: number;
+}) {
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(700);
+  const [heights, setHeights] = useState<Record<string, number>>({});
+  const onRowHeight = useCallback((id: string, height: number) => {
+    setHeights((current) => current[id] === height ? current : { ...current, [id]: height });
+  }, []);
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const update = () => {
+      setScrollTop(element.scrollTop);
+      setViewportHeight(element.clientHeight || 700);
+    };
+    update();
+    element.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => {
+      element.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [scrollRef]);
+  const offsets = useMemo(() => {
+    const values = [0];
+    for (const row of rows) values.push(values[values.length - 1] + (heights[row.id] ?? ESTIMATED_GRID_ROW_HEIGHT));
+    return values;
+  }, [rows, heights]);
+  if (!rows.length) {
+    return (
+      <tr>
+        <td colSpan={colSpan} className="px-3 py-10 text-center text-muted-foreground">
+          No rows yet. Add a row or import content.
+        </td>
+      </tr>
+    );
+  }
+  const findIndex = (position: number) => {
+    let low = 0;
+    let high = rows.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (offsets[middle + 1] <= position) low = middle + 1;
+      else high = middle;
+    }
+    return Math.min(low, rows.length - 1);
+  };
+  const overscan = 5;
+  const start = Math.max(0, findIndex(scrollTop) - overscan);
+  const end = Math.min(rows.length, findIndex(scrollTop + viewportHeight) + overscan + 1);
+  const topSpacer = offsets[start];
+  const bottomSpacer = offsets[rows.length] - offsets[end];
+  return (
+    <>
+      {topSpacer > 0 && <tr aria-hidden="true"><td colSpan={colSpan} style={{ height: topSpacer, padding: 0 }} /></tr>}
+      {rows.slice(start, end).map((row) => (
+        <GridRow
+          key={row.id}
+          row={row}
+          targets={targets}
+          selected={selected}
+          select={select}
+          updateRow={updateRow}
+          deleteRow={deleteRow}
+          updateCell={updateCell}
+          onHeightChange={onRowHeight}
+        />
+      ))}
+      {bottomSpacer > 0 && <tr aria-hidden="true"><td colSpan={colSpan} style={{ height: bottomSpacer, padding: 0 }} /></tr>}
+    </>
+  );
+}
+
 function Header({
   label,
   column,
@@ -1185,6 +1269,7 @@ function GridRow({
   updateRow,
   deleteRow,
   updateCell,
+  onHeightChange,
 }: {
   row: Row;
   targets: Target[];
@@ -1199,9 +1284,20 @@ function GridRow({
   }) => void;
   deleteRow: (id: string) => void;
   updateCell: (c: { id: string; status: "F" | "T"; published_url: string | null }) => void;
+  onHeightChange?: (id: string, height: number) => void;
 }) {
+  const rowRef = useRef<HTMLTableRowElement>(null);
   const [caption, setCaption] = useState(row.caption);
   const [url, setUrl] = useState(row.video_url);
+  useEffect(() => {
+    const element = rowRef.current;
+    if (!element || !onHeightChange) return;
+    const report = () => onHeightChange(row.id, element.getBoundingClientRect().height);
+    report();
+    const observer = new ResizeObserver(report);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [row.id, onHeightChange]);
   const save = () => {
     const issue = validate("caption", caption) ?? validate("video_url", url);
     if (issue) {
@@ -1211,7 +1307,7 @@ function GridRow({
     updateRow({ id: row.id, caption, video_url: url, priority: row.priority, weight: row.weight });
   };
   return (
-    <tr className="border-b align-top">
+    <tr ref={rowRef} className="border-b align-top">
       <td className="px-3 py-3">
         <div className="flex gap-2">
           <input

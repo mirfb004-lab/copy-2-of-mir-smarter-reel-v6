@@ -26,8 +26,8 @@ function BufferSettings() {
   const qc = useQueryClient();
   const campaignId = useScopedCampaignId();
 
-  const { data: creds } = useQuery({ queryKey: ["buffer-creds", campaignId], queryFn: () => list({ data: { campaign_id: campaignId } }) });
-  const { data: chans } = useQuery({ queryKey: ["channels", campaignId], queryFn: () => chansFn({ data: { campaign_id: campaignId } }) });
+  const { data: creds, isError: credsError } = useQuery({ queryKey: ["buffer-creds", campaignId], queryFn: () => list({ data: { campaign_id: campaignId } }) });
+  const { data: chans, isError: chansError } = useQuery({ queryKey: ["channels", campaignId], queryFn: () => chansFn({ data: { campaign_id: campaignId } }) });
 
   const [label, setLabel] = useState("");
   const [token, setToken] = useState("");
@@ -75,6 +75,10 @@ function BufferSettings() {
       qc.invalidateQueries({ queryKey: ["channels"] });
     },
   });
+
+  if (credsError || chansError) {
+    return <div className="text-sm text-destructive">Unable to load Buffer settings. Please try again.</div>;
+  }
 
   return (
     <div className="space-y-6">

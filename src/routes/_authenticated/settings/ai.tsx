@@ -53,9 +53,9 @@ function AiSettings() {
   const qc = useQueryClient();
   const campaignId = useScopedCampaignId();
 
-  const { data } = useQuery({ queryKey: ["settings", campaignId], queryFn: () => get({ data: { campaign_id: campaignId } }) });
-  const { data: catalog } = useQuery({ queryKey: ["ai-catalog"], queryFn: () => getCatalog() });
-  const { data: resolved } = useQuery({ queryKey: ["ai-resolved", campaignId], queryFn: () => getResolved({ data: { campaign_id: campaignId } }) });
+  const { data, isError: settingsError } = useQuery({ queryKey: ["settings", campaignId], queryFn: () => get({ data: { campaign_id: campaignId } }) });
+  const { data: catalog, isError: catalogError } = useQuery({ queryKey: ["ai-catalog"], queryFn: () => getCatalog() });
+  const { data: resolved, isError: resolvedError } = useQuery({ queryKey: ["ai-resolved", campaignId], queryFn: () => getResolved({ data: { campaign_id: campaignId } }) });
 
   const [state, setState] = useState<any>(null);
   useEffect(() => { if (data?.ai) setState(data.ai); }, [data]);
@@ -73,6 +73,7 @@ function AiSettings() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
+  if (settingsError || catalogError || resolvedError) return <div className="text-sm text-destructive">Unable to load AI settings. Please try again.</div>;
   if (!state) return <div className="text-sm text-muted-foreground">Loading…</div>;
 
   return (

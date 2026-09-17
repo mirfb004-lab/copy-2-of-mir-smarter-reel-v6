@@ -2,13 +2,13 @@
 // Finds runs whose heartbeat is older than 15 minutes and returns them
 // to a resumable state so the next scheduler tick picks them up.
 import { createFileRoute } from "@tanstack/react-router";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth.server";
 
 export const Route = createFileRoute("/api/public/cron/recover-stale")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const apikey = request.headers.get("apikey");
-        if (!apikey || apikey !== process.env.SUPABASE_PUBLISHABLE_KEY) {
+        if (!isAuthorizedCronRequest(request)) {
           return new Response("Unauthorized", { status: 401 });
         }
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");

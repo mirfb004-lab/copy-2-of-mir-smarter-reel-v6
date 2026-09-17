@@ -50,7 +50,8 @@ export const uploadCloudinaryFile = createServerFn({ method: "POST" })
       label: null,
       media_type: resource === "video" ? "video" : "image",
     });
-    return { url: body.secure_url, resourceType: resource, bytes: file.size, contentType: file.type, gallery_saved: !galleryError };
+    if (galleryError) throw new Error(`Cloudinary upload succeeded, but saving to the content gallery failed: ${galleryError.message}`);
+    return { url: body.secure_url, resourceType: resource, bytes: file.size, contentType: file.type, gallery_saved: true };
   });
 
 export const cloudinaryUploadLimits = { maxImageBytes: MAX_IMAGE_BYTES, maxVideoBytes: MAX_VIDEO_BYTES } as const;

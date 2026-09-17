@@ -9,6 +9,28 @@ import { addChannelUsageLabels } from "./channel-usage.server";
 const sheetId = z.string().uuid();
 const channelId = z.string().uuid();
 const rowId = z.string().uuid();
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
+// PostgREST caps a single response (default 1000 rows), so every full-sheet read
+// must page explicitly or large sheets silently truncate.
+const PAGE_SIZE = 1000;
+async function selectAll<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await build(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const page = data ?? [];
+    out.push(...page);
+    if (page.length < PAGE_SIZE) return out;
+  }
+}
 const selectionRule = z.enum([
   "first_ready",
   "random_ready",
@@ -340,24 +362,32 @@ export const getSheetModeSheet = createServerFn({ method: "GET" })
   .inputValidator((d: unknown) => z.object({ id: sheetId }).parse(d))
   .handler(async ({ data, context }) => {
     await assertSheetOwner(context.supabase, context.userId, data.id);
-    const [sheetResult, targetsResult, rowsResult] = await Promise.all([
+    const [sheetResult, targetsResult, rows] = await Promise.all([
       context.supabase.from("sheet_mode_sheets").select("*").eq("id", data.id).eq("user_id", context.userId).single(),
       context.supabase.from("sheet_mode_channel_targets").select("*").eq("sheet_id", data.id).order("added_at", { ascending: true }),
-      context.supabase.from("sheet_mode_rows").select("*").eq("sheet_id", data.id).order("position", { ascending: true }),
+      selectAll<any>((from, to) =>
+        context.supabase
+          .from("sheet_mode_rows")
+          .select("*")
+          .eq("sheet_id", data.id)
+          .order("position", { ascending: true })
+          .range(from, to) as any,
+      ),
     ]);
     if (sheetResult.error) throw new Error(sheetResult.error.message);
     if (targetsResult.error) throw new Error(targetsResult.error.message);
-    if (rowsResult.error) throw new Error(rowsResult.error.message);
 
-    const rows = rowsResult.data ?? [];
     const statusesByRow = new Map<string, SheetModeChannelStatus[]>();
-    if (rows.length) {
-      const { data: statuses, error } = await context.supabase
-        .from("sheet_mode_row_channel_status")
-        .select("*")
-        .in("row_id", rows.map((row) => row.id));
-      if (error) throw new Error(error.message);
-      for (const status of statuses ?? []) {
+    for (const batch of chunk(rows.map((row: any) => row.id), 200)) {
+      const statuses = await selectAll<SheetModeChannelStatus>((from, to) =>
+        context.supabase
+          .from("sheet_mode_row_channel_status")
+          .select("*")
+          .in("row_id", batch)
+          .order("row_id", { ascending: true })
+          .range(from, to) as any,
+      );
+      for (const status of statuses) {
         const list = statusesByRow.get(status.row_id) ?? [];
         list.push(status);
         statusesByRow.set(status.row_id, list);
@@ -392,11 +422,12 @@ export const addSheetModeChannelTargets = createServerFn({ method: "POST" })
         removed_at: null,
       }, { onConflict: "sheet_id,buffer_connection_id,channel_id" }).select("id").single();
       if (error) throw new Error(error.message);
-      const { data: rows, error: rowsError } = await context.supabase.from("sheet_mode_rows").select("id").eq("sheet_id", data.sheet_id);
-      if (rowsError) throw new Error(rowsError.message);
-      if (rows?.length) {
+      const rows = await selectAll<{ id: string }>((from, to) =>
+        context.supabase.from("sheet_mode_rows").select("id").eq("sheet_id", data.sheet_id).order("position", { ascending: true }).range(from, to) as any,
+      );
+      for (const batch of chunk(rows, 500)) {
         const { error: statusError } = await context.supabase.from("sheet_mode_row_channel_status").upsert(
-          rows.map((row) => ({ row_id: row.id, channel_target_id: inserted.id, status: "F" })),
+          batch.map((row) => ({ row_id: row.id, channel_target_id: inserted.id, status: "F" })),
           { onConflict: "row_id,channel_target_id" },
         );
         if (statusError) throw new Error(statusError.message);
@@ -546,13 +577,23 @@ async function insertImportedRows(sb: any, sheetIdValue: string, rows: Array<{ c
   if (lastError) throw new Error(lastError.message);
   const payload = rows.map((row, index) => ({ sheet_id: sheetIdValue, position: (last?.position ?? 0) + index + 1, caption: row.caption, video_url: row.video_url, priority: row.priority ?? null, weight: row.weight ?? null, status: "pending" }));
   if (!payload.length) return { inserted: 0 };
-  const { data: inserted, error } = await sb.from("sheet_mode_rows").insert(payload).select("id");
-  if (error) throw new Error(error.message);
-  if ((targets ?? []).length && (inserted ?? []).length) {
-    const { error: statusError } = await sb.from("sheet_mode_row_channel_status").insert((inserted ?? []).flatMap((row: { id: string }) => (targets ?? []).map((target: { id: string }) => ({ row_id: row.id, channel_target_id: target.id, status: "F" }))));
-    if (statusError) throw new Error(statusError.message);
+  // Chunked so a 3000+ row import never sends one oversized statement.
+  let insertedCount = 0;
+  for (const batch of chunk(payload, 500)) {
+    const { data: inserted, error } = await sb.from("sheet_mode_rows").insert(batch).select("id");
+    if (error) throw new Error(error.message);
+    insertedCount += inserted?.length ?? 0;
+    if ((targets ?? []).length && (inserted ?? []).length) {
+      const pairs = (inserted ?? []).flatMap((row: { id: string }) =>
+        (targets ?? []).map((target: { id: string }) => ({ row_id: row.id, channel_target_id: target.id, status: "F" })),
+      );
+      for (const statusBatch of chunk(pairs, 500)) {
+        const { error: statusError } = await sb.from("sheet_mode_row_channel_status").insert(statusBatch);
+        if (statusError) throw new Error(statusError.message);
+      }
+    }
   }
-  return { inserted: inserted?.length ?? 0 };
+  return { inserted: insertedCount };
 }
 
 export const importSheetModeRows = createServerFn({ method: "POST" })
@@ -608,7 +649,10 @@ export const removeDuplicateSheetModeRows = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     const seen = new Set<string>(); const ids: string[] = [];
     for (const row of rows ?? []) { const key = row.video_url.trim().toLowerCase(); if (!key) continue; if (seen.has(key)) ids.push(row.id); else seen.add(key); }
-    if (ids.length) { const result = await context.supabase.from("sheet_mode_rows").delete().in("id", ids); if (result.error) throw new Error(result.error.message); }
+    for (const batch of chunk(ids, 500)) {
+      const result = await context.supabase.from("sheet_mode_rows").delete().in("id", batch);
+      if (result.error) throw new Error(result.error.message);
+    }
     return { removed: ids.length };
   });
 
@@ -620,7 +664,14 @@ export const retryFailedSheetModeRows = createServerFn({ method: "POST" })
     const { data: rows, error } = await context.supabase.from("sheet_mode_rows").select("id").eq("sheet_id", data.sheet_id);
     if (error) throw new Error(error.message);
     const ids = (rows ?? []).map((row) => row.id);
-    if (ids.length) { const result = await context.supabase.from("sheet_mode_row_channel_status").update({ status: "F", last_error: null }).in("row_id", ids).not("last_error", "is", null); if (result.error) throw new Error(result.error.message); }
+    for (const batch of chunk(ids, 500)) {
+      const result = await context.supabase
+        .from("sheet_mode_row_channel_status")
+        .update({ status: "F", last_error: null })
+        .in("row_id", batch)
+        .not("last_error", "is", null);
+      if (result.error) throw new Error(result.error.message);
+    }
     return { reset: ids.length };
   });
 
@@ -674,7 +725,7 @@ export const bulkUpdateSheetModeCells = createServerFn({ method: "POST" })
 const fillLinesSchema = z.object({ sheet_id: sheetId, lines: z.array(z.string().max(20000)).min(1).max(5000) });
 
 async function fillSheetModeColumn(sb: any, sheetIdValue: string, column: "caption" | "video_url", lines: string[]) {
-  const { data: rows, error } = await sb.from("sheet_mode_rows").select("id,position,caption,video_url").eq("sheet_id", sheetIdValue).order("position", { ascending: true });
+  const { data: rows, error } = await sb.from("sheet_mode_rows").select("id,sheet_id,position,caption,video_url,priority,weight,status").eq("sheet_id", sheetIdValue).order("position", { ascending: true });
   if (error) throw new Error(error.message);
   const skipped: Array<{ line: number; message: string }> = [];
   const valid: string[] = [];
@@ -685,13 +736,22 @@ async function fillSheetModeColumn(sb: any, sheetIdValue: string, column: "capti
     else valid.push(value);
   });
   const emptyRows = (rows ?? []).filter((row: any) => !String(row[column] ?? "").trim());
-  let filled = 0;
   const updates = valid.slice(0, emptyRows.length);
-  for (let index = 0; index < updates.length; index++) {
-    const result = await sb.from("sheet_mode_rows").update({ [column]: updates[index] }).eq("id", emptyRows[index].id).eq("sheet_id", sheetIdValue);
+  for (const batch of chunk(updates.map((value, index) => ({ row: emptyRows[index], value })), 500)) {
+    const payload = batch.map(({ row, value }) => ({
+      id: row.id,
+      sheet_id: row.sheet_id,
+      position: row.position,
+      caption: column === "caption" ? value : row.caption,
+      video_url: column === "video_url" ? value : row.video_url,
+      priority: row.priority,
+      weight: row.weight,
+      status: row.status,
+    }));
+    const result = await sb.from("sheet_mode_rows").upsert(payload, { onConflict: "id" });
     if (result.error) throw new Error(result.error.message);
-    filled++;
   }
+  const filled = updates.length;
   const overflow = valid.slice(updates.length);
   const inserted = await insertImportedRows(
     sb,
@@ -716,25 +776,6 @@ export const fillSheetModeUrls = createServerFn({ method: "POST" })
     await assertSheetOwner(context.supabase, context.userId, data.sheet_id);
     return fillSheetModeColumn(context.supabase, data.sheet_id, "video_url", data.lines);
   });
-
-export const updateSheetModeChannelCustomizationJson = updateSheetModeChannelCustomization;
-
-export const SHEET_MODE_TIKTOK_API_NOTE = "Buffer's API currently supports only TikTok isAiGenerated and title; privacy, comments, duet, and stitch controls are not sent.";
-
-export const SHEET_MODE_METADATA_FIELD_NOTE = "Instagram firstComment and Pinterest url are accepted by Buffer but currently not reliably persisted; they are intentionally not exposed as working fields.";
-
-export const SHEET_MODE_YOUTUBE_CATEGORIES = [
-  ["1", "Film & Animation"], ["2", "Autos & Vehicles"], ["10", "Music"], ["15", "Pets & Animals"],
-  ["17", "Sports"], ["19", "Travel & Events"], ["20", "Gaming"], ["22", "People & Blogs"],
-  ["23", "Comedy"], ["24", "Entertainment"], ["25", "News & Politics"], ["26", "Howto & Style"],
-  ["27", "Education"], ["28", "Science & Tech"], ["29", "Nonprofits & Activism"],
-] as const;
-
-export const SHEET_MODE_TIKTOK_FIELDS_AUDIT = {
-  uiFields: ["Privacy Level", "Allow Comments", "Allow Duet", "Allow Stitch"],
-  serverForwarding: "The current Reel Formula worker passes these values into the formula object, but buffer.server.ts does not serialize them into TikTok metadata; the current Buffer mapper returns no TikTok metadata for the Reel Formula path.",
-  recommendation: "Remove or relabel these controls only after user approval at the Part I checkpoint.",
-} as const;
 
 export const fillAllSheetModeCaptions = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

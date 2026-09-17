@@ -4,7 +4,7 @@ import { z } from "zod";
 
 export const listRuns = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ campaign_id: z.string().uuid().nullable().optional() }).optional().parse(d))
+  .inputValidator((d: unknown) => z.object({ campaign_id: z.string().uuid().nullable().optional(), export_all: z.boolean().optional().default(false), search: z.string().trim().max(200).optional().default("") }).optional().parse(d))
   .handler(async ({ data, context }) => {
     let q = context.supabase
       .from("runs")
@@ -20,10 +20,15 @@ export const listRuns = createServerFn({ method: "POST" })
 
         learning_reports(worked, hook_verdict, change_recommendation)
       `)
-      .order("started_at", { ascending: false })
-      .limit(500);
+      .order("started_at", { ascending: false });
     if (data?.campaign_id) q = q.eq("campaign_id", data.campaign_id);
-    const { data: rows, error } = await q;
+    const search = data?.search?.toLowerCase() ?? "";
+    if (search && !data?.export_all) {
+      const { data: allRows, error } = await q;
+      if (error) throw new Error(error.message);
+      return (allRows ?? []).filter((row) => JSON.stringify(row).toLowerCase().includes(search)).slice(0, 100);
+    }
+    const { data: rows, error } = await (data?.export_all ? q : q.limit(100));
     if (error) throw new Error(error.message);
     return rows ?? [];
   });
@@ -84,17 +89,22 @@ export const dashboardStats = createServerFn({ method: "POST" })
 // Posts that exist in Buffer but were not created by an app run (historical / manual posts).
 export const listImportedPosts = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ campaign_id: z.string().uuid().nullable().optional() }).optional().parse(d))
+  .inputValidator((d: unknown) => z.object({ campaign_id: z.string().uuid().nullable().optional(), export_all: z.boolean().optional().default(false), search: z.string().trim().max(200).optional().default("") }).optional().parse(d))
   .handler(async ({ data, context }) => {
     let q = context.supabase
       .from("published_posts")
       .select("id,buffer_post_id,permalink,posted_at,buffer_status,due_at,verified_at,platform,text_content,source,campaign_id,channel_id,channels(name,platform),post_analytics(views,likes,comments,shares,saves,reach,impressions,fetched_at)")
       .eq("source", "buffer_import")
-      .order("posted_at", { ascending: false })
-      .limit(300);
+      .order("posted_at", { ascending: false });
     // Sheets are campaign-isolated: only this campaign's imported posts.
     if (data?.campaign_id) q = q.eq("campaign_id", data.campaign_id);
-    const { data: rows, error } = await q;
+    const search = data?.search?.toLowerCase() ?? "";
+    if (search && !data?.export_all) {
+      const { data: allRows, error } = await q;
+      if (error) throw new Error(error.message);
+      return (allRows ?? []).filter((row) => JSON.stringify(row).toLowerCase().includes(search)).slice(0, 100);
+    }
+    const { data: rows, error } = await (data?.export_all ? q : q.limit(100));
     if (error) throw new Error(error.message);
     return rows ?? [];
   });

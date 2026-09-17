@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Brain, Download, Upload, Trash2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 
 export const Route = createFileRoute("/_authenticated/learning")({ component: LearningPage });
 
@@ -22,8 +22,10 @@ function LearningPage() {
   const qc = useQueryClient();
   const campaignId = useScopedCampaignId();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [page, setPage] = useState(0);
+  const pageSize = 50;
 
-  const { data } = useQuery({ queryKey: ["memory", campaignId], queryFn: () => list({ data: { campaign_id: campaignId } }) });
+  const { data, isError: memoryError } = useQuery({ queryKey: ["memory", campaignId], queryFn: () => list({ data: { campaign_id: campaignId } }) });
 
   const resetMut = useMutation({
     mutationFn: () => reset(),
@@ -38,6 +40,10 @@ function LearningPage() {
     onSuccess: (r) => { toast.success(`Imported ${r.imported} insights`); qc.invalidateQueries({ queryKey: ["memory"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Import failed"),
   });
+
+  if (memoryError) {
+    return <div className="text-sm text-destructive">Unable to load learning memory. Please try again.</div>;
+  }
 
   async function doExport() {
     const data = await exp();
@@ -60,8 +66,10 @@ function LearningPage() {
     }
   }
 
+  const totalItems = data?.length ?? 0;
   const grouped: Record<string, any[]> = {};
-  for (const m of data ?? []) (grouped[m.category] ??= []).push(m);
+  for (const m of (data ?? []).slice(page * pageSize, page * pageSize + pageSize)) (grouped[m.category] ??= []).push(m);
+  const groupedEntries = Object.entries(grouped);
 
   return (
     <div className="space-y-6">
@@ -86,8 +94,9 @@ function LearningPage() {
           Memory is empty. After your first published post gets analytics, Loop will start extracting insights automatically.
         </CardContent></Card>
       ) : (
+        <>
         <div className="grid gap-4 lg:grid-cols-2">
-          {Object.entries(grouped).map(([cat, items]) => (
+          {groupedEntries.map(([cat, items]) => (
             <Card key={cat}>
               <CardHeader>
                 <CardTitle className="capitalize flex items-center gap-2">{cat}</CardTitle>
@@ -111,6 +120,16 @@ function LearningPage() {
             </Card>
           ))}
         </div>
+        {totalItems > pageSize && (
+          <div className="flex items-center justify-between mt-4 text-xs text-muted-foreground">
+            <span>Insights {page * pageSize + 1}–{Math.min((page + 1) * pageSize, totalItems)} of {totalItems}</span>
+            <div className="flex gap-2">
+              <button className="underline disabled:no-underline disabled:opacity-50" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Prev</button>
+              <button className="underline disabled:no-underline disabled:opacity-50" disabled={(page + 1) * pageSize >= totalItems} onClick={() => setPage((p) => p + 1)}>Next</button>
+            </div>
+          </div>
+        )}
+        </>
       )}
     </div>
   );

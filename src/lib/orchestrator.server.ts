@@ -28,28 +28,21 @@ interface StepState {
   finalize?: { done: boolean };
 }
 
-function cloudinaryThumb(url: string, offset = "auto"): string {
-  const m = url.match(/^(.*\/upload\/)(.*)$/);
-  if (!m) return url;
-  const rest = m[2].replace(/\.[a-zA-Z0-9]+$/, ".jpg");
-  return `${m[1]}so_${offset},w_640,c_fill,q_auto,f_jpg/${rest}`;
+// Frames come from the browser (native HTML5 canvas seeking) and are cached on
+// the queue row. Cloudinary is a static host only — no transformation credits.
+function framesToDataUrls(raw: unknown, limit = 12): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((f): f is string => typeof f === "string" && f.length > 0)
+    .slice(0, limit)
+    .map((f) => (f.startsWith("data:") ? f : `data:image/jpeg;base64,${f}`));
 }
 
-// Keep only frames Cloudinary can actually render; a bad offset returns 400 and
-// breaks the whole vision call.
-async function usableFrames(urls: string[]): Promise<string[]> {
-  const checked = await Promise.all(
-    urls.map(async (u) => {
-      try {
-        const res = await fetch(u, { method: "GET", headers: { Range: "bytes=0-0" } });
-        return res.ok || res.status === 206 ? u : null;
-      } catch {
-        return null;
-      }
-    }),
-  );
-  return checked.filter((u): u is string => Boolean(u));
+async function loadQueueFrames(sb: Sb, queueItemId: string, limit = 12): Promise<string[]> {
+  const { data } = await sb.from("video_queue").select("ai_frames").eq("id", queueItemId).maybeSingle();
+  return framesToDataUrls((data as { ai_frames?: unknown } | null)?.ai_frames, limit);
 }
+
 
 
 async function log(sb: Sb, userId: string, runId: string | null, level: string, module: string, message: string, meta?: unknown) {
@@ -94,7 +87,7 @@ async function stepAnalyzePrevious(
     .select(`id, run_number, started_at,
       captions(text,hashtags,cta,hook,length),
       video_analyses(summary,topic,objects,scene,actions,emotions),
-      video_queue!runs_queue_item_id_fkey(cloudinary_url),
+      video_queue!runs_queue_item_id_fkey(cloudinary_url,ai_frames),
       published_posts(posted_at,permalink,post_analytics(views,likes,comments,shares,saves,reach,impressions))`)
     .eq("user_id", userId).eq("status", "complete").neq("id", runId)
     .order("started_at", { ascending: false }).limit(Math.max(1, Math.min(lookback, 10)));
@@ -113,11 +106,13 @@ async function stepAnalyzePrevious(
     analytics: r.published_posts?.[0]?.post_analytics?.[0] ?? null,
   }));
 
-  // Visual context: one frame per previous video so the model can *see* what
-  // performed well or badly in this campaign, not just read the caption.
-  const frameUrls = await usableFrames(
-    compact.filter((c) => c.video_url).slice(0, 4).map((c) => cloudinaryThumb(c.video_url as string, "auto")),
-  );
+  // Visual context: one cached browser-extracted frame per previous video so the
+  // model can *see* what performed well or badly in this campaign.
+  const frameUrls = history
+    .slice(0, 4)
+    .map((r: any) => framesToDataUrls(r.video_queue?.ai_frames, 1)[0])
+    .filter((f: string | undefined): f is string => Boolean(f));
+
 
   const cap = compact[0].caption;
   const analytics = compact[0].analytics;
@@ -204,11 +199,10 @@ durable visual + copy lessons for this campaign.`;
   return report;
 }
 
-async function stepAnalyzeVideo(sb: Sb, userId: string, runId: string, url: string, aiSettings: AISettingsSchema, visionPrompt: string) {
-  // Cloudinary percent offsets use the "p" suffix (so_25p); a literal "%" 400s.
-  const candidates = ["auto", "25p", "50p", "75p"].map((o) => cloudinaryThumb(url, o));
-  const ok = await usableFrames(candidates);
-  const frames = ok.length ? ok : [cloudinaryThumb(url, "0")];
+async function stepAnalyzeVideo(sb: Sb, userId: string, runId: string, frames: string[], aiSettings: AISettingsSchema, visionPrompt: string) {
+  const promptText = frames.length
+    ? visionPrompt
+    : `${visionPrompt}\n\nNOTE: No video frames are available for this item yet (open the Loop queue in the browser to prepare them). Infer conservatively from the campaign context and avoid inventing specific visual details.`;
 
   const result = await withRetry("ai",
     async () => executeAIRequest(aiSettings, (model) => generateText({
@@ -216,11 +210,12 @@ async function stepAnalyzeVideo(sb: Sb, userId: string, runId: string, url: stri
       messages: [{
         role: "user",
         content: [
-          { type: "text", text: visionPrompt },
+          { type: "text", text: promptText },
           ...frames.map((u) => ({ type: "image" as const, image: u })),
         ],
       }],
-    }), { requiresVision: true }),
+    } as any), frames.length ? { requiresVision: true } : undefined),
+
     async (attempt, err, durationMs) => {
       await audit(sb, {
         userId, runId, eventType: err ? "ai.retry" : "ai.response",
@@ -725,7 +720,9 @@ async function executeSteps(sb: Sb, userId: string, run: any, channel: any, stat
     // Step: analyze video
     if (!state.analyze_video?.done) {
       await refreshHeartbeat(sb, runId, channelId);
-      const summary = await stepAnalyzeVideo(sb, userId, runId, queueUrl, aiSettings, promptVer.vision_prompt);
+      const cachedFrames = queueItemId ? await loadQueueFrames(sb, queueItemId) : [];
+      const summary = await stepAnalyzeVideo(sb, userId, runId, cachedFrames, aiSettings, promptVer.vision_prompt);
+
       state.analyze_video = { done: true, summary };
       await persistStepState(sb, runId, state, "strategy");
     }
@@ -790,10 +787,16 @@ async function executeSteps(sb: Sb, userId: string, run: any, channel: any, stat
 
     // Step: finalize
     if (queueItemId && options.finalizeQueue !== false) {
+      // Cached browser-extracted frames are temporary: drop them once the caption
+      // is written and the post is published, so they don't accumulate storage.
       await sb.from("video_queue").update({
         status: "done", processed_at: new Date().toISOString(), error: null,
+        ai_frames: null, ai_frames_at: null,
       }).eq("id", queueItemId);
+    } else if (queueItemId) {
+      await sb.from("video_queue").update({ ai_frames: null, ai_frames_at: null }).eq("id", queueItemId);
     }
+
     await sb.from("runs").update({
       status: "complete", finished_at: new Date().toISOString(),
       duration_ms: Date.now() - t0,

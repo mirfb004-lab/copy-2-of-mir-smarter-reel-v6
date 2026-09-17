@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { TrendingUp, TrendingDown, Target, Sparkles } from "lucide-react";
+import { useState } from "react";
 
 export const Route = createFileRoute("/_authenticated/insights")({ component: InsightsPage });
 
@@ -15,10 +16,18 @@ function InsightsPage() {
   const predFn = useServerFn(listPredictionAccuracy);
   const stratFn = useServerFn(listStrategies);
   const campaignId = useScopedCampaignId();
+  const [trendPage, setTrendPage] = useState(0);
+  const [predictionPage, setPredictionPage] = useState(0);
+  const trendPageSize = 6;
+  const predictionPageSize = 10;
 
-  const { data: trends } = useQuery({ queryKey: ["insight_trends", campaignId], queryFn: () => trendsFn({ data: { campaign_id: campaignId } }) });
-  const { data: predictions } = useQuery({ queryKey: ["prediction_accuracy", campaignId], queryFn: () => predFn({ data: { campaign_id: campaignId } }) });
-  const { data: strategies } = useQuery({ queryKey: ["strategies", campaignId], queryFn: () => stratFn({ data: { campaign_id: campaignId } }) });
+  const { data: trends, isError: trendsError } = useQuery({ queryKey: ["insight_trends", campaignId], queryFn: () => trendsFn({ data: { campaign_id: campaignId } }) });
+  const { data: predictions, isError: predictionsError } = useQuery({ queryKey: ["prediction_accuracy", campaignId], queryFn: () => predFn({ data: { campaign_id: campaignId } }) });
+  const { data: strategies, isError: strategiesError } = useQuery({ queryKey: ["strategies", campaignId], queryFn: () => stratFn({ data: { campaign_id: campaignId } }) });
+
+  if (trendsError || predictionsError || strategiesError) {
+    return <div className="text-sm text-destructive">Unable to load insights. Please try again.</div>;
+  }
 
   const avgAccuracy = (() => {
     const rows = predictions ?? [];
@@ -30,6 +39,10 @@ function InsightsPage() {
   // Group trends by dimension
   const grouped: Record<string, any[]> = {};
   for (const t of trends ?? []) (grouped[t.dimension] ??= []).push(t);
+  const groupedEntries = Object.entries(grouped);
+  const visibleGroups = groupedEntries.slice(trendPage * trendPageSize, trendPage * trendPageSize + trendPageSize);
+  const predictionCount = predictions?.length ?? 0;
+  const predictionRows = (predictions ?? []).slice(predictionPage * predictionPageSize, predictionPage * predictionPageSize + predictionPageSize);
 
   return (
     <div className="space-y-6">
@@ -76,8 +89,9 @@ function InsightsPage() {
           </CardContent>
         </Card>
       ) : (
+        <>
         <div className="grid gap-4 lg:grid-cols-2">
-          {Object.entries(grouped).map(([dim, items]) => (
+          {visibleGroups.map(([dim, items]) => (
             <Card key={dim}>
               <CardHeader>
                 <CardTitle className="capitalize text-base">{dim.replace(/_/g, " ")}</CardTitle>
@@ -113,6 +127,16 @@ function InsightsPage() {
             </Card>
           ))}
         </div>
+        {groupedEntries.length > trendPageSize && (
+          <div className="flex items-center justify-between mt-4 text-xs text-muted-foreground">
+            <span>Trend groups {trendPage * trendPageSize + 1}–{Math.min((trendPage + 1) * trendPageSize, groupedEntries.length)} of {groupedEntries.length}</span>
+            <div className="flex gap-2">
+              <button className="underline disabled:no-underline disabled:opacity-50" disabled={trendPage === 0} onClick={() => setTrendPage((p) => p - 1)}>Prev</button>
+              <button className="underline disabled:no-underline disabled:opacity-50" disabled={(trendPage + 1) * trendPageSize >= groupedEntries.length} onClick={() => setTrendPage((p) => p + 1)}>Next</button>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {(predictions ?? []).length > 0 && (
@@ -136,7 +160,7 @@ function InsightsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(predictions ?? []).map((p: any) => (
+                  {predictionRows.map((p: any) => (
                     <tr key={p.id} className="border-b border-border/50">
                       <td className="py-2">{new Date(p.evaluated_at).toLocaleDateString()}</td>
                       <td className="text-right font-mono">{p.predicted_views}/{p.actual_views}</td>
@@ -150,6 +174,15 @@ function InsightsPage() {
                 </tbody>
               </table>
             </div>
+            {predictionCount > predictionPageSize && (
+              <div className="flex items-center justify-between mt-3 text-xs text-muted-foreground">
+                <span>Predictions {predictionPage * predictionPageSize + 1}–{Math.min((predictionPage + 1) * predictionPageSize, predictionCount)} of {predictionCount}</span>
+                <div className="flex gap-2">
+                  <button className="underline disabled:no-underline disabled:opacity-50" disabled={predictionPage === 0} onClick={() => setPredictionPage((p) => p - 1)}>Prev</button>
+                  <button className="underline disabled:no-underline disabled:opacity-50" disabled={(predictionPage + 1) * predictionPageSize >= predictionCount} onClick={() => setPredictionPage((p) => p + 1)}>Next</button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
