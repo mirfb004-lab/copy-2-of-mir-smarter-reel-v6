@@ -1,5 +1,13 @@
 import "./lib/error-capture";
 
+// Dev only: eagerly pull every server-function module into the server module graph
+// at boot. Without this, the dev server cannot resolve a server-function id until
+// that module happens to be compiled, and the first RPCs of a fresh session fail
+// with "Invalid server function ID" (500 + blank screen).
+if (import.meta.env.DEV) {
+  import.meta.glob("./lib/**/*.functions.ts", { eager: true });
+}
+
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
