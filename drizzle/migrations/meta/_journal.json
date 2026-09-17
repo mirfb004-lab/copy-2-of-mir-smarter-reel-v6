@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1789650124568,
+      "tag": "0000_add_frame_sampling_and_ai_frames",
+      "breakpoints": true
+    }
+  ]
+}

@@ -299,6 +299,7 @@ export type Database = {
           custom_objective: string | null
           custom_scheduled_at: string | null
           description: string | null
+          frame_sampling_seconds: number
           id: string
           name: string
           objective: string
@@ -320,6 +321,7 @@ export type Database = {
           custom_objective?: string | null
           custom_scheduled_at?: string | null
           description?: string | null
+          frame_sampling_seconds?: number
           id?: string
           name: string
           objective?: string
@@ -341,6 +343,7 @@ export type Database = {
           custom_objective?: string | null
           custom_scheduled_at?: string | null
           description?: string | null
+          frame_sampling_seconds?: number
           id?: string
           name?: string
           objective?: string
@@ -2048,6 +2051,8 @@ export type Database = {
       video_queue: {
         Row: {
           added_at: string
+          ai_frames: Json | null
+          ai_frames_at: string | null
           attempts: number
           campaign_id: string | null
           channel_id: string | null
@@ -2065,6 +2070,8 @@ export type Database = {
         }
         Insert: {
           added_at?: string
+          ai_frames?: Json | null
+          ai_frames_at?: string | null
           attempts?: number
           campaign_id?: string | null
           channel_id?: string | null
@@ -2082,6 +2089,8 @@ export type Database = {
         }
         Update: {
           added_at?: string
+          ai_frames?: Json | null
+          ai_frames_at?: string | null
           attempts?: number
           campaign_id?: string | null
           channel_id?: string | null
