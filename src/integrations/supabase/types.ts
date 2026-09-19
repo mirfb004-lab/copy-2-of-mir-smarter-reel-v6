@@ -299,6 +299,7 @@ export type Database = {
           custom_objective: string | null
           custom_scheduled_at: string | null
           description: string | null
+          frame_extraction_enabled: boolean
           frame_sampling_seconds: number
           id: string
           name: string
@@ -321,6 +322,7 @@ export type Database = {
           custom_objective?: string | null
           custom_scheduled_at?: string | null
           description?: string | null
+          frame_extraction_enabled?: boolean
           frame_sampling_seconds?: number
           id?: string
           name: string
@@ -343,6 +345,7 @@ export type Database = {
           custom_objective?: string | null
           custom_scheduled_at?: string | null
           description?: string | null
+          frame_extraction_enabled?: boolean
           frame_sampling_seconds?: number
           id?: string
           name?: string
@@ -2178,6 +2181,7 @@ export type Database = {
         Args: { _channel_id: string; _run_id: string; _ttl_seconds: number }
         Returns: boolean
       }
+      usage_db_stats: { Args: never; Returns: Json }
     }
     Enums: {
       analysis_scope:

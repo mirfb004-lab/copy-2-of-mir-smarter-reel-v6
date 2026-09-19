@@ -7,6 +7,15 @@ export const listQueueItemsNeedingFrames = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ campaign_id: z.string().uuid().nullable().optional() }).optional().parse(d))
   .handler(async ({ data, context }) => {
+    // Campaigns with frame extraction turned off never get frames extracted.
+    const { data: campaigns, error: campErr } = await context.supabase
+      .from("campaigns")
+      .select("id,frame_extraction_enabled")
+      .eq("user_id", context.userId);
+    if (campErr) throw new Error(campErr.message);
+    const disabled = new Set((campaigns ?? []).filter((c) => c.frame_extraction_enabled === false).map((c) => c.id));
+    if (data?.campaign_id && disabled.has(data.campaign_id)) return [];
+
     let q = context.supabase
       .from("video_queue")
       .select("id,cloudinary_url,campaign_id")
@@ -18,7 +27,23 @@ export const listQueueItemsNeedingFrames = createServerFn({ method: "POST" })
     if (data?.campaign_id) q = q.eq("campaign_id", data.campaign_id);
     const { data: rows, error } = await q;
     if (error) throw new Error(error.message);
-    return rows ?? [];
+    return (rows ?? []).filter((r) => !(r.campaign_id && disabled.has(r.campaign_id)));
+  });
+
+export const updateCampaignFrameExtraction = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({
+    id: z.string().uuid(),
+    frame_extraction_enabled: z.boolean(),
+  }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { error } = await context.supabase
+      .from("campaigns")
+      .update({ frame_extraction_enabled: data.frame_extraction_enabled })
+      .eq("id", data.id)
+      .eq("user_id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
 
 export const saveQueueItemFrames = createServerFn({ method: "POST" })

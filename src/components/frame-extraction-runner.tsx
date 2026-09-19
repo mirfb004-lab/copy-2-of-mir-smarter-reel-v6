@@ -15,15 +15,18 @@ export function FrameExtractionRunner() {
   const { scopedCampaignId, activeCampaign } = useCampaignScope();
   const list = useServerFn(listQueueItemsNeedingFrames);
   const save = useServerFn(saveQueueItemFrames);
-  const interval = Number((activeCampaign as { frame_sampling_seconds?: number } | null)?.frame_sampling_seconds ?? 10) || 10;
+  const settings = activeCampaign as { frame_sampling_seconds?: number; frame_extraction_enabled?: boolean } | null;
+  const interval = Number(settings?.frame_sampling_seconds ?? 10) || 10;
+  const enabled = settings?.frame_extraction_enabled !== false;
 
   const [status, setStatus] = useState<string | null>(null);
   const busy = useRef(false);
 
   const { data: pending, refetch } = useQuery({
-    queryKey: ["queue-frames-missing", scopedCampaignId],
+    queryKey: ["queue-frames-missing", scopedCampaignId, enabled],
     queryFn: () => list({ data: { campaign_id: scopedCampaignId } }),
     refetchInterval: 60_000,
+    enabled,
   });
 
   useEffect(() => {

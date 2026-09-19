@@ -18,7 +18,7 @@ import { Play, Pause, Square, Trash2, Plus, CircleCheck, RotateCcw, RefreshCw, E
 import { MultiChannelCampaignPanel } from "@/components/multi-channel-campaign-panel";
 import { CloudinaryTransformFields } from "@/components/cloudinary-transform-fields";
 import { FrameSamplingFields } from "@/components/frame-sampling-fields";
-import { updateCampaignFrameSampling } from "@/lib/video-frames.functions";
+import { updateCampaignFrameSampling, updateCampaignFrameExtraction } from "@/lib/video-frames.functions";
 import { SchedulerStatsPanel } from "@/components/scheduler-stats-panel";
 import { SchedulerItemHistory } from "@/components/scheduler-item-history";
 import {
@@ -54,6 +54,7 @@ function CampaignsPage() {
   const updatePublishing = useServerFn(updateCampaignPublishing);
   const updateCloudinary = useServerFn(updateCampaignCloudinaryTransform);
   const updateFrameSampling = useServerFn(updateCampaignFrameSampling);
+  const updateFrameExtraction = useServerFn(updateCampaignFrameExtraction);
 
   const listSamples = useServerFn(listSampleCaptions);
   const createSample = useServerFn(createSampleCaption);
@@ -85,6 +86,7 @@ function CampaignsPage() {
   const [cloudinaryTransform, setCloudinaryTransform] = useState("");
   const [cloudinaryTransformMode, setCloudinaryTransformMode] = useState<"replace" | "stack">("replace");
   const [frameSampling, setFrameSampling] = useState(10);
+  const [frameExtraction, setFrameExtraction] = useState(true);
   const [sampleText, setSampleText] = useState("");
   const [editingSampleId, setEditingSampleId] = useState<string | null>(null);
   const [editingSampleText, setEditingSampleText] = useState("");
@@ -102,10 +104,11 @@ function CampaignsPage() {
       cloudinary_transform: cloudinaryTransform,
       cloudinary_transform_mode: cloudinaryTransformMode,
       frame_sampling_seconds: frameSampling,
+      frame_extraction_enabled: frameExtraction,
     } }),
     onSuccess: (r) => {
       toast.success("Campaign created");
-      setName(""); setDesc(""); setCustomObj(""); setChannelMode("single"); setCloudinaryTransformEnabled(false); setCloudinaryTransform(""); setCloudinaryTransformMode("replace"); setFrameSampling(10);
+      setName(""); setDesc(""); setCustomObj(""); setChannelMode("single"); setCloudinaryTransformEnabled(false); setCloudinaryTransform(""); setCloudinaryTransformMode("replace"); setFrameSampling(10); setFrameExtraction(true);
       setActiveCampaignId(r.id);
       qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
@@ -125,6 +128,11 @@ function CampaignsPage() {
   const frameSamplingMut = useMutation({
     mutationFn: (frame_sampling_seconds: number) => updateFrameSampling({ data: { id: activeId!, frame_sampling_seconds } }),
     onSuccess: () => { toast.success("Frame sampling saved"); qc.invalidateQueries({ queryKey: ["campaigns"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  const frameExtractionMut = useMutation({
+    mutationFn: (frame_extraction_enabled: boolean) => updateFrameExtraction({ data: { id: activeId!, frame_extraction_enabled } }),
+    onSuccess: (_r, enabled) => { toast.success(enabled ? "Frame extraction turned on" : "Frame extraction turned off"); qc.invalidateQueries({ queryKey: ["campaigns"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
   const publishMut = useMutation({
@@ -222,7 +230,7 @@ function CampaignsPage() {
             />
           </div>
           <div className="md:col-span-2"><CloudinaryTransformFields enabled={cloudinaryTransformEnabled} transformation={cloudinaryTransform} mode={cloudinaryTransformMode} onEnabledChange={setCloudinaryTransformEnabled} onTransformationChange={setCloudinaryTransform} onModeChange={setCloudinaryTransformMode} /></div>
-          <div className="md:col-span-2"><FrameSamplingFields value={frameSampling} onChange={setFrameSampling} /></div>
+          <div className="md:col-span-2"><FrameSamplingFields value={frameSampling} onChange={setFrameSampling} extractionEnabled={frameExtraction} onExtractionEnabledChange={setFrameExtraction} /></div>
           <div className="flex items-center gap-3 md:col-span-2 pt-2">
             <Switch id="sl" checked={shareLearning} onCheckedChange={setShareLearning}/>
             <Label htmlFor="sl" className="text-sm font-normal">Share learning across all campaigns (default: isolated)</Label>
@@ -249,6 +257,8 @@ function CampaignsPage() {
             <FrameSamplingFields
               value={Number(activeCampaign.frame_sampling_seconds ?? 10) || 10}
               onChange={(seconds) => frameSamplingMut.mutate(seconds)}
+              extractionEnabled={activeCampaign.frame_extraction_enabled !== false}
+              onExtractionEnabledChange={(enabled) => frameExtractionMut.mutate(enabled)}
             />
           </CardContent>
         </Card>

@@ -7,7 +7,7 @@ export const listCampaigns = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data, error } = await context.supabase
       .from("campaigns")
-      .select("id,name,description,objective,custom_objective,status,share_learning,publish_mode,custom_scheduled_at,publish_delay_minutes, use_sample_captions,sample_caption_mode,channel_mode,cloudinary_transform_enabled,cloudinary_transform,cloudinary_transform_mode,frame_sampling_seconds,created_at,updated_at")
+      .select("id,name,description,objective,custom_objective,status,share_learning,publish_mode,custom_scheduled_at,publish_delay_minutes, use_sample_captions,sample_caption_mode,channel_mode,cloudinary_transform_enabled,cloudinary_transform,cloudinary_transform_mode,frame_sampling_seconds,frame_extraction_enabled,created_at,updated_at")
       .order("created_at", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
@@ -30,6 +30,7 @@ const upsertSchema = z.object({
   cloudinary_transform: z.string().max(1000).optional(),
   cloudinary_transform_mode: z.enum(["replace", "stack"]).optional(),
   frame_sampling_seconds: z.number().int().min(1).max(120).optional(),
+  frame_extraction_enabled: z.boolean().optional(),
 
 });
 
@@ -54,6 +55,7 @@ export const upsertCampaign = createServerFn({ method: "POST" })
         ...(data.cloudinary_transform === undefined ? {} : { cloudinary_transform: data.cloudinary_transform }),
         ...(data.cloudinary_transform_mode === undefined ? {} : { cloudinary_transform_mode: data.cloudinary_transform_mode }),
         ...(data.frame_sampling_seconds === undefined ? {} : { frame_sampling_seconds: data.frame_sampling_seconds }),
+        ...(data.frame_extraction_enabled === undefined ? {} : { frame_extraction_enabled: data.frame_extraction_enabled }),
         ...publishFields,
       }).eq("id", data.id);
       if (error) throw new Error(error.message);
@@ -68,6 +70,7 @@ export const upsertCampaign = createServerFn({ method: "POST" })
       cloudinary_transform: data.cloudinary_transform ?? "",
       cloudinary_transform_mode: data.cloudinary_transform_mode ?? "replace",
       frame_sampling_seconds: data.frame_sampling_seconds ?? 10,
+      frame_extraction_enabled: data.frame_extraction_enabled ?? true,
       ...publishFields,
     }).select("id").single();
     if (error) throw new Error(error.message);
