@@ -18,7 +18,7 @@ import { Play, Pause, Square, Trash2, Plus, CircleCheck, RotateCcw, RefreshCw, E
 import { MultiChannelCampaignPanel } from "@/components/multi-channel-campaign-panel";
 import { CloudinaryTransformFields } from "@/components/cloudinary-transform-fields";
 import { FrameSamplingFields } from "@/components/frame-sampling-fields";
-import { updateCampaignFrameSampling } from "@/lib/video-frames.functions";
+import { updateCampaignFrameSampling, updateCampaignFrameExtraction } from "@/lib/video-frames.functions";
 import { SchedulerStatsPanel } from "@/components/scheduler-stats-panel";
 import { SchedulerItemHistory } from "@/components/scheduler-item-history";
 import {
@@ -54,6 +54,7 @@ function CampaignsPage() {
   const updatePublishing = useServerFn(updateCampaignPublishing);
   const updateCloudinary = useServerFn(updateCampaignCloudinaryTransform);
   const updateFrameSampling = useServerFn(updateCampaignFrameSampling);
+  const updateFrameExtraction = useServerFn(updateCampaignFrameExtraction);
 
   const listSamples = useServerFn(listSampleCaptions);
   const createSample = useServerFn(createSampleCaption);
