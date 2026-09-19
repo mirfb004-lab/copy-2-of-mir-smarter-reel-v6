@@ -230,7 +230,7 @@ function CampaignsPage() {
             />
           </div>
           <div className="md:col-span-2"><CloudinaryTransformFields enabled={cloudinaryTransformEnabled} transformation={cloudinaryTransform} mode={cloudinaryTransformMode} onEnabledChange={setCloudinaryTransformEnabled} onTransformationChange={setCloudinaryTransform} onModeChange={setCloudinaryTransformMode} /></div>
-          <div className="md:col-span-2"><FrameSamplingFields value={frameSampling} onChange={setFrameSampling} /></div>
+          <div className="md:col-span-2"><FrameSamplingFields value={frameSampling} onChange={setFrameSampling} extractionEnabled={frameExtraction} onExtractionEnabledChange={setFrameExtraction} /></div>
           <div className="flex items-center gap-3 md:col-span-2 pt-2">
             <Switch id="sl" checked={shareLearning} onCheckedChange={setShareLearning}/>
             <Label htmlFor="sl" className="text-sm font-normal">Share learning across all campaigns (default: isolated)</Label>
@@ -257,6 +257,8 @@ function CampaignsPage() {
             <FrameSamplingFields
               value={Number(activeCampaign.frame_sampling_seconds ?? 10) || 10}
               onChange={(seconds) => frameSamplingMut.mutate(seconds)}
+              extractionEnabled={activeCampaign.frame_extraction_enabled !== false}
+              onExtractionEnabledChange={(enabled) => frameExtractionMut.mutate(enabled)}
             />
           </CardContent>
         </Card>
