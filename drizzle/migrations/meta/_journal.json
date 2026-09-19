@@ -8,6 +8,13 @@
       "when": 1789650124568,
       "tag": "0000_add_frame_sampling_and_ai_frames",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789782828130,
+      "tag": "0001_frame_extraction_toggle_and_usage_stats",
+      "breakpoints": true
     }
   ]
 }
