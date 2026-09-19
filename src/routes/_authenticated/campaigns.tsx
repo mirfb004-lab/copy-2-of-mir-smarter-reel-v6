@@ -86,6 +86,7 @@ function CampaignsPage() {
   const [cloudinaryTransform, setCloudinaryTransform] = useState("");
   const [cloudinaryTransformMode, setCloudinaryTransformMode] = useState<"replace" | "stack">("replace");
   const [frameSampling, setFrameSampling] = useState(10);
+  const [frameExtraction, setFrameExtraction] = useState(true);
   const [sampleText, setSampleText] = useState("");
   const [editingSampleId, setEditingSampleId] = useState<string | null>(null);
   const [editingSampleText, setEditingSampleText] = useState("");
@@ -103,10 +104,11 @@ function CampaignsPage() {
       cloudinary_transform: cloudinaryTransform,
       cloudinary_transform_mode: cloudinaryTransformMode,
       frame_sampling_seconds: frameSampling,
+      frame_extraction_enabled: frameExtraction,
     } }),
     onSuccess: (r) => {
       toast.success("Campaign created");
-      setName(""); setDesc(""); setCustomObj(""); setChannelMode("single"); setCloudinaryTransformEnabled(false); setCloudinaryTransform(""); setCloudinaryTransformMode("replace"); setFrameSampling(10);
+      setName(""); setDesc(""); setCustomObj(""); setChannelMode("single"); setCloudinaryTransformEnabled(false); setCloudinaryTransform(""); setCloudinaryTransformMode("replace"); setFrameSampling(10); setFrameExtraction(true);
       setActiveCampaignId(r.id);
       qc.invalidateQueries({ queryKey: ["campaigns"] });
     },
@@ -126,6 +128,11 @@ function CampaignsPage() {
   const frameSamplingMut = useMutation({
     mutationFn: (frame_sampling_seconds: number) => updateFrameSampling({ data: { id: activeId!, frame_sampling_seconds } }),
     onSuccess: () => { toast.success("Frame sampling saved"); qc.invalidateQueries({ queryKey: ["campaigns"] }); },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+  const frameExtractionMut = useMutation({
+    mutationFn: (frame_extraction_enabled: boolean) => updateFrameExtraction({ data: { id: activeId!, frame_extraction_enabled } }),
+    onSuccess: (_r, enabled) => { toast.success(enabled ? "Frame extraction turned on" : "Frame extraction turned off"); qc.invalidateQueries({ queryKey: ["campaigns"] }); },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
   const publishMut = useMutation({
