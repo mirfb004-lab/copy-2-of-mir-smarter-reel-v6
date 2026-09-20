@@ -184,7 +184,7 @@ function BufferSettings() {
                   <Button size="sm" variant="outline" onClick={() => syncMut.mutate(c.id)} disabled={syncMut.isPending}>
                     <RefreshCw className={`h-4 w-4 mr-1 ${syncMut.isPending ? "animate-spin" : ""}`}/>Resync
                   </Button>
-                  <Button size="icon" variant="ghost" onClick={() => delMut.mutate(c.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                  <Button size="icon" variant="ghost" onClick={() => delMut.mutate({ id: c.id, with_channels: true })}><Trash2 className="h-4 w-4 text-destructive"/></Button>
                 </li>
               ))}
             </ul>
