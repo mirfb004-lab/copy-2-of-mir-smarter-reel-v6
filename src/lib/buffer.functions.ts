@@ -110,8 +110,26 @@ export const bulkAddBufferCreds = createServerFn({ method: "POST" })
 
 export const deleteBufferCred = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid(), with_channels: z.boolean().optional() }).parse(d))
   .handler(async ({ data, context }) => {
+    if (data.with_channels) {
+      // Remove the channels this account brought in, detaching references first.
+      const { data: owned } = await context.supabase
+        .from("channels")
+        .select("id")
+        .eq("user_id", context.userId)
+        .eq("credential_id", data.id);
+      const ids = (owned ?? []).map((c) => c.id);
+      if (ids.length) {
+        const sb = context.supabase;
+        await sb.from("video_queue").update({ channel_id: null }).in("channel_id", ids);
+        await sb.from("schedules").delete().in("channel_id", ids);
+        await sb.from("published_posts").update({ channel_id: null }).in("channel_id", ids);
+        await sb.from("memory_insights").update({ channel_id: null }).in("channel_id", ids);
+        await sb.from("runs").update({ channel_id: null }).in("channel_id", ids);
+        await sb.from("channels").delete().in("id", ids);
+      }
+    }
     const { error } = await context.supabase.from("buffer_credentials").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
