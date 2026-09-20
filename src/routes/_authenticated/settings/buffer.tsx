@@ -34,6 +34,10 @@ function BufferSettings() {
   const [token, setToken] = useState("");
   const [syncedPreview, setSyncedPreview] = useState<Array<{ id: string; name: string; platform: string; avatar?: string }>>([]);
   const [moveTargets, setMoveTargets] = useState<Record<string, string>>({});
+  const [bulkRaw, setBulkRaw] = useState("");
+  const [bulkPrefix, setBulkPrefix] = useState("");
+  const [bulkResults, setBulkResults] = useState<Array<{ label: string; id?: string; channels: number; ok: boolean; error?: string }>>([]);
+  const bulk = useServerFn(bulkAddBufferCreds);
   const delChan = useServerFn(deleteChannel);
   const delChanMut = useMutation({
     mutationFn: (v: { id: string; move_queue_to: string | null }) => delChan({ data: v }),
@@ -70,11 +74,27 @@ function BufferSettings() {
   });
 
   const delMut = useMutation({
-    mutationFn: (id: string) => del({ data: { id } }),
-    onSuccess: () => {
+    mutationFn: (v: { id: string; with_channels?: boolean }) => del({ data: v }),
+    onSuccess: (_r, v) => {
+      toast.success("Account removed");
+      setBulkResults((rows) => rows.filter((row) => row.id !== v.id));
+      qc.invalidateQueries({ queryKey: ["buffer-creds"] });
+      qc.invalidateQueries({ queryKey: ["channels"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  const bulkMut = useMutation({
+    mutationFn: () => bulk({ data: { raw: bulkRaw, campaign_id: campaignId, label_prefix: bulkPrefix.trim() || undefined } }),
+    onSuccess: (r) => {
+      setBulkResults(r.results);
+      setBulkRaw("");
+      toast.success(`Added ${r.added} account${r.added === 1 ? "" : "s"} · ${r.channels} channel${r.channels === 1 ? "" : "s"} synced`);
       qc.invalidateQueries({ queryKey: ["buffer-creds"] });
       qc.invalidateQueries({ queryKey: ["channels"] });
     },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Bulk add failed"),
   });
 
   if (credsError || chansError) {
