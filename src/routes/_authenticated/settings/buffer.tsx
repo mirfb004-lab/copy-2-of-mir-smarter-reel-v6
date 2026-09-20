@@ -1,18 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { listBufferCreds, saveBufferCred, deleteBufferCred, syncBufferChannels } from "@/lib/buffer.functions";
+import { listBufferCreds, saveBufferCred, deleteBufferCred, syncBufferChannels, bulkAddBufferCreds } from "@/lib/buffer.functions";
 import { listChannels, deleteChannel } from "@/lib/channels.functions";
 import { ChannelOptionLabel, ChannelSelect } from "@/components/channel-picker";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useState } from "react";
 import { useScopedCampaignId } from "@/components/campaign-context";
-import { Plug, Trash2, RefreshCw } from "lucide-react";
+import { Plug, Trash2, RefreshCw, Layers } from "lucide-react";
 import { getBufferPlatformCapabilities } from "@/lib/buffer-platforms";
 
 export const Route = createFileRoute("/_authenticated/settings/buffer")({ component: BufferSettings });
@@ -33,6 +34,10 @@ function BufferSettings() {
   const [token, setToken] = useState("");
   const [syncedPreview, setSyncedPreview] = useState<Array<{ id: string; name: string; platform: string; avatar?: string }>>([]);
   const [moveTargets, setMoveTargets] = useState<Record<string, string>>({});
+  const [bulkRaw, setBulkRaw] = useState("");
+  const [bulkPrefix, setBulkPrefix] = useState("");
+  const [bulkResults, setBulkResults] = useState<Array<{ label: string; id?: string; channels: number; ok: boolean; error?: string }>>([]);
+  const bulk = useServerFn(bulkAddBufferCreds);
   const delChan = useServerFn(deleteChannel);
   const delChanMut = useMutation({
     mutationFn: (v: { id: string; move_queue_to: string | null }) => delChan({ data: v }),
@@ -69,11 +74,27 @@ function BufferSettings() {
   });
 
   const delMut = useMutation({
-    mutationFn: (id: string) => del({ data: { id } }),
-    onSuccess: () => {
+    mutationFn: (v: { id: string; with_channels?: boolean }) => del({ data: v }),
+    onSuccess: (_r, v) => {
+      toast.success("Account removed");
+      setBulkResults((rows) => rows.filter((row) => row.id !== v.id));
+      qc.invalidateQueries({ queryKey: ["buffer-creds"] });
+      qc.invalidateQueries({ queryKey: ["channels"] });
+      qc.invalidateQueries({ queryKey: ["queue"] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  const bulkMut = useMutation({
+    mutationFn: () => bulk({ data: { raw: bulkRaw, campaign_id: campaignId, label_prefix: bulkPrefix.trim() || undefined } }),
+    onSuccess: (r) => {
+      setBulkResults(r.results);
+      setBulkRaw("");
+      toast.success(`Added ${r.added} account${r.added === 1 ? "" : "s"} · ${r.channels} channel${r.channels === 1 ? "" : "s"} synced`);
       qc.invalidateQueries({ queryKey: ["buffer-creds"] });
       qc.invalidateQueries({ queryKey: ["channels"] });
     },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Bulk add failed"),
   });
 
   if (credsError || chansError) {
@@ -110,6 +131,45 @@ function BufferSettings() {
       </Card>
 
       <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Layers className="h-4 w-4"/>Add Buffer accounts in bulk</CardTitle>
+          <CardDescription>Paste many Buffer API tokens at once — one per line, optionally with a name (e.g. <span className="font-mono">Brand A, 1/abc…</span>). Every account is saved and its channels are fetched automatically.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1">
+            <Label>Raw tokens</Label>
+            <Textarea value={bulkRaw} onChange={(e) => setBulkRaw(e.target.value)} rows={6} className="font-mono text-xs"
+              placeholder={"1/abcdef123456\nBrand B, 1/ghijkl789012\nBrand C: 1/mnopqr345678"} />
+          </div>
+          <div className="space-y-1 md:w-1/2">
+            <Label>Name prefix (optional)</Label>
+            <Input value={bulkPrefix} onChange={(e) => setBulkPrefix(e.target.value)} placeholder="Agency" />
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={() => bulkMut.mutate()} disabled={bulkRaw.trim().length < 10 || bulkMut.isPending}>
+              {bulkMut.isPending ? "Adding & syncing…" : "Add all accounts"}
+            </Button>
+            {bulkRaw.trim() && <span className="text-xs text-muted-foreground">{bulkRaw.split(/\r?\n/).filter((l) => l.trim()).length} line(s) detected</span>}
+          </div>
+          {bulkResults.length > 0 && (
+            <ul className="divide-y divide-border rounded-md border border-border">
+              {bulkResults.map((r, i) => (
+                <li key={`${r.label}-${i}`} className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
+                  <span className="flex-1 min-w-[140px] font-medium">{r.label}</span>
+                  {r.ok ? <Badge variant="default">{r.channels} channel{r.channels === 1 ? "" : "s"}</Badge> : <Badge variant="destructive">{r.error ?? "failed"}</Badge>}
+                  {r.id && (
+                    <Button size="sm" variant="ghost" onClick={() => delMut.mutate({ id: r.id!, with_channels: true })}>
+                      <Trash2 className="h-4 w-4 text-destructive"/>
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader><CardTitle>Saved accounts</CardTitle></CardHeader>
         <CardContent>
           {(creds ?? []).length === 0 ? <div className="text-sm text-muted-foreground">None yet.</div> : (
@@ -124,7 +184,7 @@ function BufferSettings() {
                   <Button size="sm" variant="outline" onClick={() => syncMut.mutate(c.id)} disabled={syncMut.isPending}>
                     <RefreshCw className={`h-4 w-4 mr-1 ${syncMut.isPending ? "animate-spin" : ""}`}/>Resync
                   </Button>
-                  <Button size="icon" variant="ghost" onClick={() => delMut.mutate(c.id)}><Trash2 className="h-4 w-4 text-destructive"/></Button>
+                  <Button size="icon" variant="ghost" onClick={() => delMut.mutate({ id: c.id, with_channels: true })}><Trash2 className="h-4 w-4 text-destructive"/></Button>
                 </li>
               ))}
             </ul>
