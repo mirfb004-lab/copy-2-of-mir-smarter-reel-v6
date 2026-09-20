@@ -57,6 +57,57 @@ export const saveBufferCred = createServerFn({ method: "POST" })
     return { id: row.id };
   });
 
+const bulkSchema = z.object({
+  raw: z.string().min(10),
+  campaign_id: z.string().uuid().nullable().optional(),
+  label_prefix: z.string().max(40).optional(),
+});
+
+/** Bulk add: paste many Buffer tokens at once; each is saved then channel-synced. */
+export const bulkAddBufferCreds = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => bulkSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { parseBulkBufferTokens, syncChannelsForCredential } = await import("./buffer-sync.server");
+    const parsed = parseBulkBufferTokens(data.raw);
+    if (!parsed.length) throw new Error("No Buffer API tokens found in the pasted text");
+
+    const results: Array<{ label: string; id?: string; channels: number; ok: boolean; error?: string }> = [];
+    for (const entry of parsed) {
+      const label = data.label_prefix ? `${data.label_prefix} ${entry.label}`.slice(0, 80) : entry.label;
+      try {
+        const { data: row, error } = await context.supabase
+          .from("buffer_credentials")
+          .insert({
+            user_id: context.userId,
+            label,
+            api_token: entry.api_token,
+            graphql_endpoint: "https://api.buffer.com",
+            campaign_id: data.campaign_id ?? null,
+          })
+          .select("id")
+          .single();
+        if (error || !row) throw new Error(error?.message ?? "Could not save account");
+        try {
+          const synced = await syncChannelsForCredential(context.supabase, context.userId, row.id);
+          results.push({ label, id: row.id, channels: synced.count, ok: true });
+        } catch (syncError) {
+          await context.supabase.from("buffer_credentials").update({ status: "error" }).eq("id", row.id);
+          results.push({ label, id: row.id, channels: 0, ok: false, error: syncError instanceof Error ? syncError.message : "Sync failed" });
+        }
+      } catch (e) {
+        results.push({ label, channels: 0, ok: false, error: e instanceof Error ? e.message : "Failed" });
+      }
+    }
+
+    return {
+      added: results.filter((r) => r.id).length,
+      connected: results.filter((r) => r.ok).length,
+      channels: results.reduce((sum, r) => sum + r.channels, 0),
+      results,
+    };
+  });
+
 export const deleteBufferCred = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
