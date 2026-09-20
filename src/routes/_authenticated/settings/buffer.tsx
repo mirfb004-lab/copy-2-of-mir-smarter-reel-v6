@@ -110,6 +110,45 @@ function BufferSettings() {
       </Card>
 
       <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Layers className="h-4 w-4"/>Add Buffer accounts in bulk</CardTitle>
+          <CardDescription>Paste many Buffer API tokens at once — one per line, optionally with a name (e.g. <span className="font-mono">Brand A, 1/abc…</span>). Every account is saved and its channels are fetched automatically.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1">
+            <Label>Raw tokens</Label>
+            <Textarea value={bulkRaw} onChange={(e) => setBulkRaw(e.target.value)} rows={6} className="font-mono text-xs"
+              placeholder={"1/abcdef123456\nBrand B, 1/ghijkl789012\nBrand C: 1/mnopqr345678"} />
+          </div>
+          <div className="space-y-1 md:w-1/2">
+            <Label>Name prefix (optional)</Label>
+            <Input value={bulkPrefix} onChange={(e) => setBulkPrefix(e.target.value)} placeholder="Agency" />
+          </div>
+          <div className="flex items-center gap-3">
+            <Button onClick={() => bulkMut.mutate()} disabled={bulkRaw.trim().length < 10 || bulkMut.isPending}>
+              {bulkMut.isPending ? "Adding & syncing…" : "Add all accounts"}
+            </Button>
+            {bulkRaw.trim() && <span className="text-xs text-muted-foreground">{bulkRaw.split(/\r?\n/).filter((l) => l.trim()).length} line(s) detected</span>}
+          </div>
+          {bulkResults.length > 0 && (
+            <ul className="divide-y divide-border rounded-md border border-border">
+              {bulkResults.map((r, i) => (
+                <li key={`${r.label}-${i}`} className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
+                  <span className="flex-1 min-w-[140px] font-medium">{r.label}</span>
+                  {r.ok ? <Badge variant="default">{r.channels} channel{r.channels === 1 ? "" : "s"}</Badge> : <Badge variant="destructive">{r.error ?? "failed"}</Badge>}
+                  {r.id && (
+                    <Button size="sm" variant="ghost" onClick={() => delMut.mutate({ id: r.id!, with_channels: true })}>
+                      <Trash2 className="h-4 w-4 text-destructive"/>
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader><CardTitle>Saved accounts</CardTitle></CardHeader>
         <CardContent>
           {(creds ?? []).length === 0 ? <div className="text-sm text-muted-foreground">None yet.</div> : (
