@@ -1,18 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { listBufferCreds, saveBufferCred, deleteBufferCred, syncBufferChannels } from "@/lib/buffer.functions";
+import { listBufferCreds, saveBufferCred, deleteBufferCred, syncBufferChannels, bulkAddBufferCreds } from "@/lib/buffer.functions";
 import { listChannels, deleteChannel } from "@/lib/channels.functions";
 import { ChannelOptionLabel, ChannelSelect } from "@/components/channel-picker";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useState } from "react";
 import { useScopedCampaignId } from "@/components/campaign-context";
-import { Plug, Trash2, RefreshCw } from "lucide-react";
+import { Plug, Trash2, RefreshCw, Layers } from "lucide-react";
 import { getBufferPlatformCapabilities } from "@/lib/buffer-platforms";
 
 export const Route = createFileRoute("/_authenticated/settings/buffer")({ component: BufferSettings });
