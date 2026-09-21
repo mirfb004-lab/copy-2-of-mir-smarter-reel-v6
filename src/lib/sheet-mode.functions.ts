@@ -820,3 +820,39 @@ export const clearSheetModeRows = createServerFn({ method: "POST" })
     if (rowResult.error) throw new Error(rowResult.error.message);
     return { removed: ids.length };
   });
+
+// Sheet Mode only: add N blank rows at the end of the sheet in one go.
+export const addBlankSheetModeRows = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ sheet_id: sheetId, count: z.number().int().min(1).max(500) }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertSheetOwner(context.supabase, context.userId, data.sheet_id);
+    const blanks = Array.from({ length: data.count }, () => ({ caption: "", video_url: "" }));
+    return insertImportedRows(context.supabase, data.sheet_id, blanks);
+  });
+
+// Sheet Mode only: apply one video URL to empty (or every) URL cell.
+export const fillAllSheetModeUrls = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ sheet_id: sheetId, video_url: z.string().trim().min(1).max(4000), scope: z.enum(["empty", "all"]).default("empty") }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    await assertSheetOwner(context.supabase, context.userId, data.sheet_id);
+    const issue = validateCellValue("video_url", data.video_url);
+    if (issue) throw new Error(issue);
+    const rows = await selectAll<{ id: string; video_url: string | null }>((from, to) =>
+      context.supabase.from("sheet_mode_rows").select("id,video_url").eq("sheet_id", data.sheet_id).range(from, to),
+    );
+    const targets = rows.filter((row) => (data.scope === "all" ? true : !String(row.video_url ?? "").trim()));
+    if (!targets.length) return { filled: 0 };
+    for (const batch of chunk(targets.map((row) => row.id), 500)) {
+      const result = await context.supabase
+        .from("sheet_mode_rows")
+        .update({ video_url: data.video_url })
+        .eq("sheet_id", data.sheet_id)
+        .in("id", batch);
+      if (result.error) throw new Error(result.error.message);
+    }
+    return { filled: targets.length };
+  });
