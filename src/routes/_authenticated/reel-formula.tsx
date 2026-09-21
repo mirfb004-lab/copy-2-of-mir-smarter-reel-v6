@@ -263,7 +263,8 @@ function ReelFormulaPage() {
                         </div>
                         <Button size="icon" variant="ghost" title="Edit" onClick={() => setEditingScheduleId(editingScheduleId === schedule.id ? null : schedule.id)}><Pencil className="h-4 w-4" /></Button>
                         <Badge variant={schedule.is_active ? "default" : "secondary"}>{schedule.is_active ? "active" : "paused"}</Badge>
-                        {schedule.scheduler_mode === "manual" && <Button size="sm" variant="outline" onClick={() => runNowFn({ data: { id: schedule.id } }).then(() => { toast.success("Formula published"); qc.invalidateQueries({ queryKey: ["recurring-schedules"] }); }).catch((error) => toast.error(error instanceof Error ? error.message : "Publish failed"))}>Publish next</Button>}
+                        <Button size="sm" variant="outline" disabled={testingId === schedule.id} onClick={() => runTest(schedule.id)}>{testingId === schedule.id ? "Testing…" : "Test run"}</Button>
+                        <Button size="sm" variant="outline" onClick={() => runNowFn({ data: { id: schedule.id } }).then(() => { toast.success("Formula published"); qc.invalidateQueries({ queryKey: ["recurring-schedules"] }); }).catch((error) => toast.error(error instanceof Error ? error.message : "Publish failed"))}>Publish next</Button>
                         <Button size="icon" variant="ghost" title={schedule.is_active ? "Pause" : "Resume"} onClick={() => activeMut.mutate({ id: schedule.id, is_active: !schedule.is_active })}>{schedule.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</Button>
                         <Button size="icon" variant="ghost" title="Delete" onClick={() => deleteMut.mutate(schedule.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                       </div>
