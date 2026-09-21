@@ -344,3 +344,75 @@ export const listFormulaRunHistory = createServerFn({ method: "GET" })
     if (error) throw new Error(error.message);
     return rows ?? [];
   });
+
+// 1 Reel Formula only: dry-run check. Verifies the Buffer connection, schema,
+// channel, media and automatic-scheduler wiring WITHOUT publishing anything.
+export const testRecurringSchedule = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: schedule, error } = await context.supabase
+      .from("recurring_schedules")
+      .select("*,channels(id,buffer_channel_id,label,buffer_credentials(api_token,graphql_endpoint))")
+      .eq("id", data.id)
+      .eq("user_id", context.userId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!schedule) throw new Error("Formula not found");
+
+    const checks: Array<{ label: string; ok: boolean; detail: string }> = [];
+    const add = (label: string, ok: boolean, detail: string) => checks.push({ label, ok, detail });
+
+    add("Formula active", Boolean(schedule.is_active), schedule.is_active ? "Active" : "Turn the formula on so it can publish");
+    add(
+      "Automatic scheduling",
+      schedule.scheduler_mode !== "manual",
+      schedule.scheduler_mode === "manual" ? "Set to manual — it will only publish when you run it" : `Mode: ${schedule.scheduler_mode}`,
+    );
+    add("Next run time set", Boolean(schedule.next_run_at), schedule.next_run_at ? String(schedule.next_run_at) : "No next run time — save the schedule again");
+
+    const channel = (schedule as any).channels;
+    add("Channel linked", Boolean(channel?.buffer_channel_id), channel?.label ? `${channel.label}` : "No Buffer channel selected");
+
+    const mediaUrl: string | null =
+      schedule.mode === "multiple" ? null : (schedule.media_url as string | null);
+    if (schedule.mode === "multiple") {
+      const { count } = await context.supabase
+        .from("recurring_schedule_items")
+        .select("id", { count: "exact", head: true })
+        .eq("schedule_id", schedule.id);
+      add("Rotation items", Boolean(count), count ? `${count} item(s) in rotation` : "Rotation list is empty");
+    } else {
+      add("Video URL", Boolean(mediaUrl), mediaUrl ? "Set" : "No video URL on this formula");
+      if (mediaUrl) {
+        try {
+          const head = await fetch(mediaUrl, { method: "HEAD" });
+          add("Video reachable", head.ok, head.ok ? `HTTP ${head.status}` : `HTTP ${head.status} — the video link is not publicly reachable`);
+        } catch (e) {
+          add("Video reachable", false, e instanceof Error ? e.message : String(e));
+        }
+      }
+    }
+
+    try {
+      const { makeBufferClient, resolveBufferCredential } = await import("./buffer.server");
+      const credential = await resolveBufferCredential(
+        context.supabase as any,
+        context.userId,
+        schedule.campaign_id,
+        channel?.buffer_credentials ?? null,
+      );
+      const buffer = makeBufferClient(credential.api_token, credential.graphql_endpoint);
+      const connection = await buffer.testConnection();
+      add("Buffer connection", connection.ok, connection.message);
+      const schema = await buffer.verifySchema();
+      add("Buffer publishing API", Boolean(schema.ok && schema.hasCreatePost), schema.message);
+    } catch (e) {
+      add("Buffer connection", false, e instanceof Error ? e.message : String(e));
+    }
+
+    if (schedule.last_error) add("Last run", false, String(schedule.last_error));
+    else if (schedule.last_run_at) add("Last run", true, `Succeeded at ${schedule.last_run_at}`);
+
+    return { ok: checks.every((c) => c.ok), checks };
+  });
