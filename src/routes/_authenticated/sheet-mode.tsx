@@ -66,6 +66,8 @@ import {
   fillSheetModeCaptions,
   fillSheetModeUrls,
   fillAllSheetModeCaptions,
+  fillAllSheetModeUrls,
+  addBlankSheetModeRows,
   clearSheetModeRows,
 } from "@/lib/sheet-mode.functions";
 import { SheetModeImportWizard, parseImportFile, type ParsedImportFile } from "@/components/sheet-mode-import-wizard";
@@ -598,6 +600,15 @@ function SheetGrid({
   const [clearOpen, setClearOpen] = useState(false);
   const fillAll = useServerFn(fillAllSheetModeCaptions);
   const clearRows = useServerFn(clearSheetModeRows);
+  const fillAllUrls = useServerFn(fillAllSheetModeUrls);
+  const addBlankRows = useServerFn(addBlankSheetModeRows);
+  const [fillUrlsOpen, setFillUrlsOpen] = useState(false);
+  const [fillUrlsValue, setFillUrlsValue] = useState("");
+  const [fillUrlsScope, setFillUrlsScope] = useState<"empty" | "all">("empty");
+  const [addRowsOpen, setAddRowsOpen] = useState(false);
+  const [addRowsCount, setAddRowsCount] = useState("10");
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdFired = useRef(false);
 
   const active = targets.filter((t) => t.is_active);
   const run = (p: Promise<unknown>, text?: string) =>
