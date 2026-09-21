@@ -248,6 +248,18 @@ function ReelFormulaPage() {
                           </div>
                           <div className="mt-3"><CloudinaryTransformFields enabled={Boolean(schedule.cloudinary_transform_enabled)} transformation={schedule.cloudinary_transform ?? ""} mode={schedule.cloudinary_transform_mode === "stack" ? "stack" : "replace"} sampleUrl={schedule.media_url} onEnabledChange={(cloudinary_transform_enabled) => cloudinaryMut.mutate({ id: schedule.id, cloudinary_transform_enabled, cloudinary_transform: schedule.cloudinary_transform ?? "", cloudinary_transform_mode: schedule.cloudinary_transform_mode === "stack" ? "stack" : "replace" })} onTransformationChange={(cloudinary_transform) => cloudinaryMut.mutate({ id: schedule.id, cloudinary_transform_enabled: Boolean(schedule.cloudinary_transform_enabled), cloudinary_transform, cloudinary_transform_mode: schedule.cloudinary_transform_mode === "stack" ? "stack" : "replace" })} onModeChange={(cloudinary_transform_mode) => cloudinaryMut.mutate({ id: schedule.id, cloudinary_transform_enabled: Boolean(schedule.cloudinary_transform_enabled), cloudinary_transform: schedule.cloudinary_transform ?? "", cloudinary_transform_mode })} /></div>
                           {editingScheduleId === schedule.id && <FormulaScheduleEditor schedule={schedule} channels={channels ?? []} onCancel={() => setEditingScheduleId(null)} onSave={(value) => editScheduleMut.mutate(value)} />}
+                          {testResults[schedule.id] && (
+                            <div className="mt-3 space-y-1 rounded-md border p-3">
+                              <div className="text-sm font-medium">{testResults[schedule.id].ok ? "Test passed" : "Test found problems"}</div>
+                              {testResults[schedule.id].checks.map((check) => (
+                                <div key={check.label} className="flex items-start gap-2 text-xs">
+                                  <Badge variant={check.ok ? "default" : "destructive"}>{check.ok ? "OK" : "Fix"}</Badge>
+                                  <span className="font-medium">{check.label}</span>
+                                  <span className="text-muted-foreground break-all">{check.detail}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <Button size="icon" variant="ghost" title="Edit" onClick={() => setEditingScheduleId(editingScheduleId === schedule.id ? null : schedule.id)}><Pencil className="h-4 w-4" /></Button>
                         <Badge variant={schedule.is_active ? "default" : "secondary"}>{schedule.is_active ? "active" : "paused"}</Badge>
