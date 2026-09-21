@@ -11,6 +11,7 @@ import {
   listFormulaRunHistory,
   listRecurringSchedules,
   runRecurringScheduleNow,
+  testRecurringSchedule,
   setRecurringScheduleActive,
   updateRecurringScheduleCloudinaryTransform,
 } from "@/lib/recurring-schedules.functions";
@@ -52,6 +53,19 @@ function ReelFormulaPage() {
   const updateScheduleFn = useServerFn(updateRecurringSchedule);
   const setActiveFn = useServerFn(setRecurringScheduleActive);
   const runNowFn = useServerFn(runRecurringScheduleNow);
+  const testFn = useServerFn(testRecurringSchedule);
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, { ok: boolean; checks: Array<{ label: string; ok: boolean; detail: string }> }>>({});
+  const runTest = (id: string) => {
+    setTestingId(id);
+    testFn({ data: { id } })
+      .then((result) => {
+        setTestResults((prev) => ({ ...prev, [id]: result }));
+        result.ok ? toast.success("Test passed — this formula is ready to publish automatically") : toast.error("Test found problems — see the list below");
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : "Test failed"))
+      .finally(() => setTestingId(null));
+  };
   const deleteFn = useServerFn(deleteRecurringSchedule);
   const updateCloudinaryFn = useServerFn(updateRecurringScheduleCloudinaryTransform);
   const listHistoryFn = useServerFn(listFormulaRunHistory);
